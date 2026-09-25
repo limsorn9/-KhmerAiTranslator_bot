@@ -112,18 +112,35 @@ def translate_text_sync(text, target_lang):
         logging.error(f"Translation error: {e}")
         return text
 
+def transcribe_with_google_cloud(file_path):
+    """
+    Placeholder/Mock function for Google Cloud Speech-to-Text.
+    In the future, integrate google-cloud-speech library here.
+    """
+    logging.info(f"Routing to Google Cloud for Khmer speech-to-text: {file_path}")
+    return "នេះគឺជាអត្ថបទបណ្ដោះអាសន្នពី Google Cloud Speech-to-Text។"
+
 def transcribe_with_groq(file_path):
     if not groq_client:
         return None, "❌ កូដ GROQ_API_KEY មិនទាន់បានដាក់ចូលក្នុង Render ទេ។ សូមបញ្ចូលវាសិន!"
     
     try:
         with open(file_path, "rb") as file:
-            transcription = groq_client.audio.transcriptions.create(
+            response = groq_client.audio.transcriptions.create(
                 file=(file_path, file.read()),
                 model="whisper-large-v3",
-                response_format="text",
+                response_format="verbose_json",
             )
-        return transcription, None
+            
+        language = getattr(response, 'language', None) or (isinstance(response, dict) and response.get('language'))
+        text = getattr(response, 'text', None) or (isinstance(response, dict) and response.get('text'))
+        
+        if language == 'km':
+            # Route to Google Cloud Speech-to-Text for Khmer
+            return transcribe_with_google_cloud(file_path), None
+        else:
+            # Use Groq's transcription for other languages
+            return text, None
     except Exception as e:
         logging.error(f"Groq API Error: {e}")
         return None, f"❌ បញ្ហាប្រព័ន្ធ Groq AI៖ {str(e)}"
