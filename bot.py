@@ -24,6 +24,10 @@ if not GROQ_API_KEY:
 
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
+# ការកំណត់ការចូលរួមក្រុម
+REQUIRED_GROUP_ID = os.environ.get("REQUIRED_GROUP_ID") # លេខ ID របស់ក្រុម ឧទាហរណ៍: -100123456789
+GROUP_INVITE_LINK = "https://t.me/+O8Omn6TltnUyNzU1"
+
 # បង្កើត Client សម្រាប់ Groq
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
@@ -56,12 +60,39 @@ def build_language_keyboard(prefix="translate"):
         keyboard.append(row)
     return InlineKeyboardMarkup(keyboard)
 
+async def check_membership(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    if not REQUIRED_GROUP_ID:
+        return True # ប្រសិនបើមិនទាន់ដាក់ ID ក្រុមទេ អនុញ្ញាតឱ្យប្រើសិន
+    
+    user_id = update.effective_user.id
+    try:
+        member = await context.bot.get_chat_member(chat_id=REQUIRED_GROUP_ID, user_id=user_id)
+        if member.status in ['left', 'kicked']:
+            return False
+        return True
+    except Exception as e:
+        logging.error(f"Membership check error: {e}")
+        return False
+
+async def send_join_request(message):
+    keyboard = [[InlineKeyboardButton("ចូលរួមក្រុម (Join Group)", url=GROUP_INVITE_LINK)]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await message.reply_text(
+        "🔒 **សូមអភ័យទោស! អ្នកមិនទាន់អាចប្រើប្រាស់ Bot នេះបានទេ។**\n\n"
+        "ដើម្បីអាចបកប្រែបាន លុះត្រាតែអ្នកបានចូលរួមនៅក្នុងក្រុមរបស់យើងជាមុនសិន។ សូមចុចប៊ូតុងខាងក្រោមដើម្បីចូលរួម បន្ទាប់មកសូមសាកល្បងម្ដងទៀត។",
+        reply_markup=reply_markup
+    )
+
 async def post_init(application):
     await application.bot.set_my_commands([
         BotCommand("start", "ចាប់ផ្ដើមបត (Start Bot)")
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_membership(update, context):
+        await send_join_request(update.message)
+        return
+
     welcome_message = (
         "សួស្តី! 👋 ខ្ញុំគឺគ្រូសន អ្នកជំនាញខាងបកប្រែសម្លេង វីដេអូ និងអត្ថបទ ពីគ្រប់ភាសាទៅជាភាសាក្នុងអាស៊ាន និងភាសាពេញនិយមដទៃទៀត អ្នកអាចប្រើប្រាស់ខ្ញុំដោយឥតគិតថ្លៃ។\n\n"
         "ដើម្បីចាប់ផ្ដើម សូមគ្រាន់តែផ្ញើ **សំឡេង (Voice) វីដេអូ ឬអត្ថបទ** មកខ្ញុំ 🚀"
@@ -69,6 +100,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_message)
 
 async def prompt_language_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_membership(update, context):
+        await send_join_request(update.message)
+        return
+
     msg = update.message
     # រក្សាទុកឯកសារនៅក្នុង Memory
     context.user_data['pending_msg'] = msg
