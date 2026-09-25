@@ -6,7 +6,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, Comma
 import speech_recognition as sr
 from googletrans import Translator
 from pydub import AudioSegment
-from gtts import gTTS
+import edge_tts
 
 # កំណត់ Logging
 logging.basicConfig(
@@ -87,43 +87,35 @@ def process_audio_sync(input_path, update_id):
     except Exception as e:
         return None, f"❌ មានបញ្ហាកើតឡើងក្នុងការដំណើរការ៖ {str(e)}"
 
-def process_text_sync(text, update_id):
+def translate_text_sync(text):
     """
-    បកប្រែអក្សរ និងបម្លែងអក្សរទៅជាសំឡេង (TTS)
+    បកប្រែអក្សរនៅក្នុង Thread ផ្សេងកុំឱ្យគាំង
     """
-    try:
-        translator = Translator()
-        translated = translator.translate(text, dest=TARGET_LANGUAGE)
-        translated_text = translated.text
-        
-        # បម្លែងអក្សរខ្មែរទៅជាសំឡេង
-        tts = gTTS(text=translated_text, lang='km')
-        output_path = f"temp_tts_{update_id}.mp3"
-        tts.save(output_path)
-        
-        return translated_text, output_path
-    except Exception as e:
-        return None, f"❌ មានបញ្ហាកើតឡើង៖ {str(e)}"
+    translator = Translator()
+    translated = translator.translate(text, dest=TARGET_LANGUAGE)
+    return translated.text
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     processing_msg = await update.message.reply_text("⏳ កំពុងបកប្រែ និងអានជាសំឡេង...")
     
     try:
-        result = await asyncio.to_thread(process_text_sync, user_text, update.update_id)
+        translated_text = await asyncio.to_thread(translate_text_sync, user_text)
         
-        if result[0] is None:
-            await processing_msg.edit_text(result[1])
-        else:
-            translated_text, audio_path = result
-            await processing_msg.edit_text(f"✅ **បកប្រែជោគជ័យ:**\n\n{translated_text}")
+        # ប្រើប្រាស់ Microsoft Edge TTS សម្រាប់អានសំឡេងខ្មែរឱ្យពិរោះ
+        # km-KH-SreymomNeural គឺសំឡេងស្រី | km-KH-PisethNeural គឺសំឡេងប្រុស
+        audio_path = f"temp_tts_{update.update_id}.mp3"
+        communicate = edge_tts.Communicate(translated_text, "km-KH-SreymomNeural")
+        await communicate.save(audio_path)
+        
+        await processing_msg.edit_text(f"✅ **បកប្រែជោគជ័យ:**\n\n{translated_text}")
+        
+        # ផ្ញើសំឡេងត្រលប់ទៅវិញ
+        with open(audio_path, 'rb') as audio_file:
+            await update.message.reply_voice(audio_file)
             
-            # ផ្ញើសំឡេងត្រលប់ទៅវិញ
-            with open(audio_path, 'rb') as audio_file:
-                await update.message.reply_voice(audio_file)
-                
-            if os.path.exists(audio_path):
-                os.remove(audio_path)
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
     except Exception as e:
         logging.error(f"Error TTS: {e}")
         await processing_msg.edit_text(f"❌ មានបញ្ហា៖ {str(e)}")

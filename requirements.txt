@@ -2,4 +2,4 @@ python-telegram-bot[webhooks]
 SpeechRecognition
 googletrans==4.0.0-rc1
 pydub
-gTTS
+edge-tts
