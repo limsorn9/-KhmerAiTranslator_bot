@@ -1,7 +1,7 @@
 import os
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 import speech_recognition as sr
 from deep_translator import GoogleTranslator
 from pydub import AudioSegment
@@ -22,6 +22,13 @@ TARGET_LANGUAGE = "km"
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 # ----------------- TELEGRAM BOT LOGIC -----------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    welcome_message = (
+        "សួស្តី! 👋 ខ្ញុំគឺជា Bot បកប្រែសំឡេង និងវីដេអូមកជាភាសាខ្មែរ (ឥតគិតថ្លៃ ១០០%)។\n\n"
+        "ដើម្បីចាប់ផ្ដើម សូមគ្រាន់តែផ្ញើ **Voice (សំឡេង), បទចម្រៀង (MP3) ឬវីដេអូ** មកកាន់ខ្ញុំ។ ខ្ញុំនឹងស្ដាប់ និងបកប្រែវាជូនអ្នកភ្លាមៗ! 🚀"
+    )
+    await update.message.reply_text(welcome_message)
+
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     file_obj = None
@@ -117,6 +124,9 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = ApplicationBuilder().token(TOKEN).build()
+    
+    # បន្ថែមប៊ូតុង /start
+    application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL, handle_media))
     
     port = int(os.environ.get("PORT", 10000))
