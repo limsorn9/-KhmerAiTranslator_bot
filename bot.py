@@ -23,6 +23,7 @@ if not GROQ_API_KEY:
     logging.warning("សូមដាក់ GROQ_API_KEY នៅក្នុង Environment Variables! បើមិនដូច្នោះទេមុខងារសំឡេងនឹងមិនដើរទេ។")
 
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
+ADMIN_IDS = [int(i) for i in os.environ.get("ADMIN_IDS", "").split(",") if i]
 
 # ការកំណត់ការចូលរួមក្រុម
 REQUIRED_GROUP_ID = os.environ.get("REQUIRED_GROUP_ID", "-1004293304141") # លេខ ID របស់ក្រុម/Channel
@@ -95,7 +96,10 @@ async def send_join_request(message):
 
 async def post_init(application):
     await application.bot.set_my_commands([
-        BotCommand("start", "ចាប់ផ្ដើមបត (Start Bot)")
+        BotCommand("start", "ចាប់ផ្ដើមបត (Start Bot)"),
+        BotCommand("mycoin", "ឆែកកាក់របស់អ្នក (Check Coins)"),
+        BotCommand("topup", "ទិញកាក់មាស (Top up Coins)"),
+        BotCommand("id", "ឆែក ID (Check ID)")
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -107,9 +111,92 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
         "សួស្តី! 👋 ខ្ញុំគឺគ្រូសន អ្នកជំនាញខាងបកប្រែសម្លេង វីដេអូ និងអត្ថបទ ពីគ្រប់ភាសាទៅជាភាសាក្នុងអាស៊ាន និងភាសាពេញនិយមដទៃទៀត អ្នកអាចប្រើប្រាស់ខ្ញុំដោយឥតគិតថ្លៃ។\n\n"
         "ដើម្បីចាប់ផ្ដើម សូមគ្រាន់តែផ្ញើ **សំឡេង (Voice) វីដេអូ ឬអត្ថបទ** មកខ្ញុំ 🚀\n\n"
-        "💡 វាយបញ្ជា /id ដើម្បីឆែកលេខសម្គាល់ក្រុម ឬគណនីរបស់អ្នក។"
+        "💡 វាយបញ្ជា /mycoin ដើម្បីឆែកមើលកាក់របស់អ្នក។"
     )
     await update.message.reply_text(welcome_message)
+
+async def check_my_coin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    balance = db.get_user_balance(user_id)
+    total = balance['free'] + balance['paid']
+    msg = (
+        f"💰 **កាក់មាសរបស់អ្នក (Coins):** {total}\n"
+        f"🎁 កាក់ឥតគិតថ្លៃ (Free): {balance['free']}\n"
+        f"💳 កាក់បានទិញ (Paid): {balance['paid']}\n\n"
+        f"💡 (កាក់ឥតគិតថ្លៃ ៥ នឹងផ្តល់ជូនជារៀងរាល់ថ្ងៃ!)\n"
+        f"👉 ទិញកាក់បន្ថែមវាយបញ្ជា /topup"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def top_up_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = (
+        "💳 **របៀបទិញកាក់មាស:**\n\n"
+        "💵 **១ កាក់មាស = ១០០រៀល** (ឬ 0.025$)\n\n"
+        "1️⃣ សូមវេរប្រាក់តាមគណនី ABA:\n"
+        "   - លេខគណនី: `000000000`\n"
+        "   - ឈ្មោះ: `Your Name`\n"
+        "2️⃣ ថតអេក្រង់ (Screenshot) ការវេរប្រាក់ រួចផ្ញើមកកាន់ Admin [@AdminUsername]\n"
+        f"3️⃣ កុំភ្លេចប្រាប់ ID របស់អ្នកទៅ Admin ផង (ID របស់អ្នកគឺ៖ `{update.effective_user.id}`)\n\n"
+        "Admin នឹងធ្វើការបញ្ចូលកាក់ជូនភ្លាមៗ!"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def add_coin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ អ្នកគ្មានសិទ្ធិប្រើប្រាស់បញ្ជានេះទេ!")
+        return
+        
+    try:
+        target_id = context.args[0]
+        amount = int(context.args[1])
+        db.add_paid_coins(target_id, amount)
+        await update.message.reply_text(f"✅ បានបញ្ចូល {amount} កាក់មាសទៅឱ្យ ID {target_id} ជោគជ័យ!")
+        await context.bot.send_message(chat_id=target_id, text=f"🎉 **អបអរសាទរ!**\nអ្នកទទួលបាន {amount} កាក់មាសពី Admin! ឆែកកាក់ដោយវាយ /mycoin", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text("❌ របៀបប្រើ: /addcoin <IDភ្ញៀវ> <ចំនួនកាក់>")
+
+
+async def check_my_coin(update, context):
+    user_id = update.effective_user.id
+    balance = db.get_user_balance(user_id)
+    total = balance['free'] + balance['paid']
+    msg = (
+        f"💰 **កាក់មាសរបស់អ្នក (Coins):** {total}\n"
+        f"🎁 កាក់ឥតគិតថ្លៃ (Free): {balance['free']}\n"
+        f"💳 កាក់បានទិញ (Paid): {balance['paid']}\n\n"
+        f"💡 (កាក់ឥតគិតថ្លៃ ៥ នឹងផ្តល់ជូនជារៀងរាល់ថ្ងៃ!)\n"
+        f"👉 ទិញកាក់បន្ថែមវាយបញ្ជា /topup"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def top_up_info(update, context):
+    msg = (
+        "💳 **របៀបទិញកាក់មាស:**\n\n"
+        "💵 **១ កាក់មាស = ១០០រៀល** (ឬ 0.025$)\n\n"
+        "1️⃣ សូមវេរប្រាក់តាមគណនី ABA:\n"
+        "   - លេខគណនី: `000000000`\n"
+        "   - ឈ្មោះ: `Your Name`\n"
+        "2️⃣ ថតអេក្រង់ (Screenshot) ការវេរប្រាក់ រួចផ្ញើមកកាន់ Admin [@AdminUsername]\n"
+        f"3️⃣ កុំភ្លេចប្រាប់ ID របស់អ្នកទៅ Admin ផង (ID របស់អ្នកគឺ៖ `{update.effective_user.id}`)\n\n"
+        "Admin នឹងធ្វើការបញ្ចូលកាក់ជូនភ្លាមៗ!"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def add_coin(update, context):
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ អ្នកគ្មានសិទ្ធិប្រើប្រាស់បញ្ជានេះទេ!")
+        return
+        
+    try:
+        target_id = context.args[0]
+        amount = int(context.args[1])
+        db.add_paid_coins(target_id, amount)
+        await update.message.reply_text(f"✅ បានបញ្ចូល {amount} កាក់មាសទៅឱ្យ ID {target_id} ជោគជ័យ!")
+        await context.bot.send_message(chat_id=target_id, text=f"🎉 **អបអរសាទរ!**\nអ្នកទទួលបាន {amount} កាក់មាសពី Admin! ឆែកកាក់ដោយវាយ /mycoin", parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text("❌ របៀបប្រើ: /addcoin <IDភ្ញៀវ> <ចំនួនកាក់>")
 
 async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -319,6 +406,9 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("id", get_chat_id))
+    application.add_handler(CommandHandler("mycoin", check_my_coin))
+    application.add_handler(CommandHandler("topup", top_up_info))
+    application.add_handler(CommandHandler("addcoin", add_coin))
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_language_selection))
     application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL, prompt_language_selection))
