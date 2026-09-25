@@ -259,8 +259,22 @@ async def prompt_language_selection(update: Update, context: ContextTypes.DEFAUL
         return
 
     msg = update.message
-    # រក្សាទុកឯកសារនៅក្នុង Memory
+    
+    extracted_text = None
+    if msg.text:
+        extracted_text = msg.text
+    elif msg.photo or msg.document:
+        import doc_reader
+        status_msg = await msg.reply_text("⏳ កំពុងទាញយកអក្សរចេញពីឯកសារ...")
+        extracted_text, err = await doc_reader.process_document(msg, context.bot)
+        if err:
+            await status_msg.edit_text(f"❌ បរាជ័យ៖ {err}")
+            return
+        await status_msg.delete()
+        
+    # រក្សាទុកឯកសារនៅក្នុង Memory សម្រាប់ button callback
     context.user_data['pending_msg'] = msg
+    context.user_data['extracted_text'] = extracted_text
     
     if extracted_text:
         doc_type = "📝 អត្ថបទ (Text)"
@@ -274,13 +288,18 @@ async def prompt_language_selection(update: Update, context: ContextTypes.DEFAUL
         doc_type = "📁 ឯកសារ (Document)"
         
     prompt_text = (
-        f"📥 **ប្រភេទឯកសារ៖** {doc_type}\n"
-        f"🗣 **ភាសាដើម៖** (Groq AI ស្វែងរកដោយស្វ័យប្រវត្តិ ⚡️)\n\n"
+        f"📥 <b>ប្រភេទឯកសារ៖</b> {doc_type}\n"
+        f"🗣 <b>ភាសាដើម៖</b> (Groq AI ស្វែងរកដោយស្វ័យប្រវត្តិ ⚡️)\n\n"
         f"🎯 តើអ្នកចង់ឱ្យខ្ញុំបកប្រែទៅជាភាសាអ្វី?"
     )
     
     keyboard = build_language_keyboard("translate")
-    await msg.reply_text(prompt_text, reply_markup=keyboard, reply_to_message_id=msg.message_id)
+    
+    # បន្ថែមប៊ូតុង ផ្ញើទៅអេដមីន ប្រសិនបើជារូបភាព
+    if msg.photo:
+        keyboard.inline_keyboard.insert(0, [InlineKeyboardButton("🧾 ផ្ញើទៅអេដមីន", callback_data="submit_receipt")])
+        
+    await msg.reply_text(prompt_text, reply_markup=keyboard, reply_to_message_id=msg.message_id, parse_mode="HTML")
 
 def translate_text_sync(text, target_lang):
     try:
@@ -467,6 +486,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         voice_id = target_info['voice']
         
         processing_msg = query.message
+        extracted_text = context.user_data.get('extracted_text')
         
         if extracted_text:
             await query.edit_message_text(f"⏳ កំពុងបកប្រែអត្ថបទទៅជា **{target_info['name']}** និងអានជាសំឡេង...")
