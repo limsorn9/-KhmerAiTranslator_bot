@@ -89,17 +89,31 @@ async def post_init(application):
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_membership(update, context):
-        await send_join_request(update.message)
-        return
+    if update.message.chat.type == 'private':
+        if not await check_membership(update, context):
+            await send_join_request(update.message)
+            return
 
     welcome_message = (
         "សួស្តី! 👋 ខ្ញុំគឺគ្រូសន អ្នកជំនាញខាងបកប្រែសម្លេង វីដេអូ និងអត្ថបទ ពីគ្រប់ភាសាទៅជាភាសាក្នុងអាស៊ាន និងភាសាពេញនិយមដទៃទៀត អ្នកអាចប្រើប្រាស់ខ្ញុំដោយឥតគិតថ្លៃ។\n\n"
-        "ដើម្បីចាប់ផ្ដើម សូមគ្រាន់តែផ្ញើ **សំឡេង (Voice) វីដេអូ ឬអត្ថបទ** មកខ្ញុំ 🚀"
+        "ដើម្បីចាប់ផ្ដើម សូមគ្រាន់តែផ្ញើ **សំឡេង (Voice) វីដេអូ ឬអត្ថបទ** មកខ្ញុំ 🚀\n\n"
+        "💡 វាយបញ្ជា /id ដើម្បីឆែកលេខសម្គាល់ក្រុម ឬគណនីរបស់អ្នក។"
     )
     await update.message.reply_text(welcome_message)
 
+async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    សម្រាប់ឆែកមើល Chat ID របស់ Group ឬ User
+    """
+    chat_id = update.message.chat_id
+    chat_type = update.message.chat.type
+    await update.message.reply_text(f"🆔 ID របស់ {chat_type} នេះគឺ៖ `{chat_id}`", parse_mode="Markdown")
+
 async def prompt_language_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # បើកុំឱ្យឆែកសមាជិកពេលនៅក្នុងក្រុម (Group Chat) ព្រោះ Bot អាចនឹងឆ្លើយតបគ្រប់សារ
+    if update.message.chat.type != 'private':
+        return
+        
     if not await check_membership(update, context):
         await send_join_request(update.message)
         return
@@ -294,6 +308,7 @@ def main():
     application = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
     
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("id", get_chat_id))
     application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_language_selection))
     application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL, prompt_language_selection))
