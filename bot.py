@@ -6,6 +6,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, Comma
 import requests
 import edge_tts
 from groq import Groq
+import db
 
 # កំណត់ Logging
 logging.basicConfig(
