@@ -1,5 +1,4 @@
 python-telegram-bot[webhooks]
-SpeechRecognition
 requests
-pydub
 edge-tts
+groq
