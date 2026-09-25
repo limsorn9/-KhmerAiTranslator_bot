@@ -8,3 +8,4 @@ Pillow
 pymupdf
 python-docx
 openpyxl
+pytz
