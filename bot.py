@@ -439,6 +439,7 @@ async def process_media_action(msg, processing_msg, target_lang, voice_id):
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = update.effective_user.id
     await query.answer()
     data = query.data
     
