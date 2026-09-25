@@ -447,6 +447,36 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ ឯកសារនេះផុតកំណត់ហើយ។ សូមផ្ញើឯកសារ ឬអក្សរម្ដងទៀត។")
         return
         
+    if data == "submit_receipt":
+        if not msg.photo:
+            await query.edit_message_text("❌ នេះមិនមែនជារូបភាពទេ!")
+            return
+            
+        photo = msg.photo[-1]
+        file_unique_id = photo.file_unique_id
+        
+        import db
+        if db.check_receipt(file_unique_id):
+            await query.edit_message_text("❌ វិក្កយបត្រនេះត្រូវបានផ្ញើរួចម្ដងហើយ! ហាមផ្ញើវិក្កយបត្រស្ទួន។")
+            return
+            
+        db.save_receipt(file_unique_id, user_id)
+        
+        sent_to_admin = False
+        for admin_id in ADMIN_IDS:
+            try:
+                caption = f"🧾 **មានវិក្កយបត្រថ្មីពីភ្ញៀវ!**\n👤 ភ្ញៀវ ID: `{user_id}`\n\nវាយបញ្ជាខាងក្រោមដើម្បីបញ្ចូលកាក់ឱ្យគាត់៖\n`/addcoin {user_id} [ចំនួនកាក់]`"
+                await context.bot.send_photo(chat_id=admin_id, photo=photo.file_id, caption=caption, parse_mode="Markdown")
+                sent_to_admin = True
+            except:
+                pass
+                
+        if sent_to_admin:
+            await query.edit_message_text("✅ វិក្កយបត្ររបស់អ្នកត្រូវបានបញ្ជូនទៅកាន់ Admin រួចរាល់ហើយ។ សូមរង់ចាំការបញ្ចូលកាក់បន្តិច!")
+        else:
+            await query.edit_message_text("⚠️ មានបញ្ហាក្នុងការបញ្ជូនទៅ Admin។ សូមទាក់ទង Admin ដោយផ្ទាល់។")
+        return
+        
     if data.startswith('translate_'):
         code = data.split('_', 1)[1]
         
