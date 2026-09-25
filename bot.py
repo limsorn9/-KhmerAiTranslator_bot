@@ -1,7 +1,7 @@
 import os
 import logging
 import asyncio
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 import speech_recognition as sr
 import requests
@@ -24,6 +24,12 @@ TARGET_LANGUAGE = "km"
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 # ----------------- TELEGRAM BOT LOGIC -----------------
+async def post_init(application):
+    # បង្កើត Menu សម្រាប់ Bot (ប៊ូតុង /start)
+    await application.bot.set_my_commands([
+        BotCommand("start", "ចាប់ផ្ដើមបត (Start Bot)")
+    ])
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
         "សួស្តី! 👋 ខ្ញុំគឺជា Bot បកប្រែភាសា (ឥតគិតថ្លៃ ១០០%)។\n\n"
@@ -120,7 +126,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         communicate = edge_tts.Communicate(translated_text, "km-KH-SreymomNeural")
         await communicate.save(audio_path)
         
-        await processing_msg.edit_text(f"✅ **បកប្រែជោគជ័យ:**\n\n{translated_text}")
+        await processing_msg.edit_text(f"✅ **ចុចលើអត្ថបទខាងក្រោមដើម្បី Copy:**\n\n`{translated_text}`", parse_mode="Markdown")
         
         # ផ្ញើសំឡេងត្រលប់ទៅវិញ
         with open(audio_path, 'rb') as audio_file:
@@ -172,10 +178,10 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             original_text, translated_text = result
             result_text = (
-                f"✅ **ការបកប្រែជោគជ័យ (Khmer)**\n\n"
-                f"{translated_text}\n\n"
+                f"✅ **ការបកប្រែជោគជ័យ (ចុចលើអត្ថបទខាងក្រោមដើម្បី Copy):**\n\n"
+                f"`{translated_text}`\n\n"
                 f"---\n"
-                f"📝 *អត្ថបទដើម:* {original_text[:800]}..."
+                f"📝 *អត្ថបទដើម:*\n`{original_text}`"
             )
             await processing_msg.edit_text(result_text, parse_mode="Markdown")
 
@@ -188,7 +194,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(input_path)
 
 def main():
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
     
     # បន្ថែមប៊ូតុង /start
     application.add_handler(CommandHandler("start", start))
