@@ -2,3 +2,4 @@ python-telegram-bot[webhooks]
 SpeechRecognition
 deep-translator
 pydub
+gTTS

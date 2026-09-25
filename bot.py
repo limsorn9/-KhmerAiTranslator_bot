@@ -6,6 +6,7 @@ from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, Comma
 import speech_recognition as sr
 from deep_translator import GoogleTranslator
 from pydub import AudioSegment
+from gtts import gTTS
 
 # កំណត់ Logging
 logging.basicConfig(
@@ -25,8 +26,9 @@ RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 # ----------------- TELEGRAM BOT LOGIC -----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
-        "សួស្តី! 👋 ខ្ញុំគឺជា Bot បកប្រែសំឡេង និងវីដេអូមកជាភាសាខ្មែរ (ឥតគិតថ្លៃ ១០០%)។\n\n"
-        "ដើម្បីចាប់ផ្ដើម សូមគ្រាន់តែផ្ញើ **Voice (សំឡេង), បទចម្រៀង (MP3) ឬវីដេអូ** មកកាន់ខ្ញុំ។ ខ្ញុំនឹងស្ដាប់ និងបកប្រែវាជូនអ្នកភ្លាមៗ! 🚀"
+        "សួស្តី! 👋 ខ្ញុំគឺជា Bot បកប្រែភាសា (ឥតគិតថ្លៃ ១០០%)។\n\n"
+        "🎙 **មុខងារទី១៖** ផ្ញើសំឡេង (Voice) ឬវីដេអូ មកខ្ញុំដើម្បីបកប្រែជាអក្សរខ្មែរ។\n"
+        "📝 **មុខងារទី២៖** ផ្ញើអក្សរ (Text) មកខ្ញុំ ខ្ញុំនឹងបកប្រែជាភាសាខ្មែរ រួចអានជាសំឡេងឱ្យអ្នកស្ដាប់! 🚀"
     )
     await update.message.reply_text(welcome_message)
 
@@ -73,6 +75,46 @@ def process_audio_sync(input_path, update_id):
         return original_text, translated_text
     except Exception as e:
         return None, f"❌ មានបញ្ហាកើតឡើងក្នុងការដំណើរការ៖ {str(e)}"
+
+def process_text_sync(text, update_id):
+    """
+    បកប្រែអក្សរ និងបម្លែងអក្សរទៅជាសំឡេង (TTS)
+    """
+    try:
+        translator = GoogleTranslator(source='auto', target=TARGET_LANGUAGE)
+        translated_text = translator.translate(text)
+        
+        # បម្លែងអក្សរខ្មែរទៅជាសំឡេង
+        tts = gTTS(text=translated_text, lang='km')
+        output_path = f"temp_tts_{update_id}.mp3"
+        tts.save(output_path)
+        
+        return translated_text, output_path
+    except Exception as e:
+        return None, f"❌ មានបញ្ហាកើតឡើង៖ {str(e)}"
+
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+    processing_msg = await update.message.reply_text("⏳ កំពុងបកប្រែ និងអានជាសំឡេង...")
+    
+    try:
+        result = await asyncio.to_thread(process_text_sync, user_text, update.update_id)
+        
+        if result[0] is None:
+            await processing_msg.edit_text(result[1])
+        else:
+            translated_text, audio_path = result
+            await processing_msg.edit_text(f"✅ **បកប្រែជោគជ័យ:**\n\n{translated_text}")
+            
+            # ផ្ញើសំឡេងត្រលប់ទៅវិញ
+            with open(audio_path, 'rb') as audio_file:
+                await update.message.reply_voice(audio_file)
+                
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+    except Exception as e:
+        logging.error(f"Error TTS: {e}")
+        await processing_msg.edit_text(f"❌ មានបញ្ហា៖ {str(e)}")
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
@@ -134,6 +176,7 @@ def main():
     
     # បន្ថែមប៊ូតុង /start
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL, handle_media))
     
     port = int(os.environ.get("PORT", 10000))
