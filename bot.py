@@ -12,8 +12,10 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Telegram Token (ទាញយកពី Environment Variables)
-TOKEN = os.getenv("TELEGRAM_TOKEN", "7720315035:AAElqTLlztR--BP4X6J9_mG1SjVF1ILkmJs")
+# Telegram Token (ទាញយកពី Environment Variables ដែលដាក់ក្នុង Render)
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+if not TOKEN:
+    raise ValueError("សូមដាក់ TELEGRAM_TOKEN នៅក្នុង Environment Variables របស់ Render!")
 TARGET_LANGUAGE = "km"
 
 # ទាញយក URL របស់វិបសាយ Render ដោយស្វ័យប្រវត្តិ
