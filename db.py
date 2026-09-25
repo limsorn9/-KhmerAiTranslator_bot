@@ -94,3 +94,15 @@ def add_paid_coins(user_id, amount):
         'paid_coins': new_paid
     })
     return True
+
+def check_receipt(receipt_id):
+    if not db_ref: return False
+    data = db_ref.child('receipts').child(receipt_id).get()
+    return bool(data)
+
+def save_receipt(receipt_id, user_id):
+    if not db_ref: return
+    db_ref.child('receipts').child(receipt_id).set({
+        'user_id': str(user_id),
+        'timestamp': get_today_str()
+    })
