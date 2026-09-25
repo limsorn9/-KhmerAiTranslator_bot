@@ -322,13 +322,31 @@ def translate_text_sync(text, target_lang):
         logging.error(f"Translation error: {e}")
         return text
 
-def transcribe_with_google_cloud(file_path):
-    """
-    Placeholder/Mock function for Google Cloud Speech-to-Text.
-    In the future, integrate google-cloud-speech library here.
-    """
-    logging.info(f"Routing to Google Cloud for Khmer speech-to-text: {file_path}")
-    return "នេះគឺជាអត្ថបទបណ្ដោះអាសន្នពី Google Cloud Speech-to-Text។"
+def transcribe_with_google_free(file_path):
+    try:
+        import speech_recognition as sr
+        from pydub import AudioSegment
+        import os
+        
+        # បំប្លែងទៅជា WAV ព្រោះ SpeechRecognition ត្រូវការវា
+        wav_path = file_path + ".wav"
+        audio = AudioSegment.from_file(file_path)
+        audio.export(wav_path, format="wav")
+        
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
+            
+        # ស្តាប់ជាភាសាខ្មែរ (km-KH)
+        text = recognizer.recognize_google(audio_data, language="km-KH")
+        
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+            
+        return text, None
+    except Exception as e:
+        logging.error(f"Google Speech Recognition Error: {e}")
+        return None, f"❌ បញ្ហាប្រព័ន្ធ Google ស្តាប់សម្លេង៖ {str(e)}"
 
 def transcribe_with_groq(file_path):
     if not groq_client:
@@ -346,10 +364,15 @@ def transcribe_with_groq(file_path):
         text = getattr(response, 'text', None) or (isinstance(response, dict) and response.get('text'))
         
         if language == 'km':
-            # Route to Google Cloud Speech-to-Text for Khmer
-            return transcribe_with_google_cloud(file_path), None
+            # បើ Groq គិតថាជាភាសាខ្មែរ យើងបោះទៅឱ្យ Google ជាអ្នកស្តាប់វិញដើម្បីឱ្យច្បាស់
+            logging.info("Detected Khmer voice by Groq. Rerouting to Google Free STT...")
+            google_text, err = transcribe_with_google_free(file_path)
+            if google_text:
+                return google_text, None
+            # បើ Google ស្តាប់បរាជ័យ ប្រើរបស់ Groq ធម្មតា
+            return text, None
         else:
-            # Use Groq's transcription for other languages
+            # ប្រើ Groq's transcription សម្រាប់ភាសាផ្សេងៗ
             return text, None
     except Exception as e:
         logging.error(f"Groq API Error: {e}")

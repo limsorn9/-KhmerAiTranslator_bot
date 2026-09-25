@@ -9,3 +9,5 @@ pymupdf
 python-docx
 openpyxl
 pytz
+SpeechRecognition
+pydub
