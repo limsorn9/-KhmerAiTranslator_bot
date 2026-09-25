@@ -25,7 +25,7 @@ if not GROQ_API_KEY:
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 # ការកំណត់ការចូលរួមក្រុម
-REQUIRED_GROUP_ID = os.environ.get("REQUIRED_GROUP_ID") # លេខ ID របស់ក្រុម ឧទាហរណ៍: -100123456789
+REQUIRED_GROUP_ID = os.environ.get("REQUIRED_GROUP_ID", "-100240224709") # លេខ ID របស់ក្រុម/Channel
 GROUP_INVITE_LINK = "https://t.me/+O8Omn6TltnUyNzU1"
 
 # បង្កើត Client សម្រាប់ Groq
