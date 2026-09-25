@@ -20,58 +20,55 @@ TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
     raise ValueError("សូមដាក់ TELEGRAM_TOKEN នៅក្នុង Environment Variables របស់ Render!")
 
-# ទាញយក URL របស់វិបសាយ Render ដោយស្វ័យប្រវត្តិ
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
-# ភាសា និងសំឡេងរបស់ Microsoft Edge TTS
-VOICES = {
-    'km': 'km-KH-SreymomNeural',
-    'en': 'en-US-AriaNeural',
-    'zh-CN': 'zh-CN-XiaoxiaoNeural'
+# ភាសាអាស៊ានទាំង ១១ បូកបន្ថែម ចិន និង អង់គ្លេស
+LANG_INFO = {
+    'km': {'name': '🇰🇭 ខ្មែរ', 'voice': 'km-KH-SreymomNeural'},
+    'th': {'name': '🇹🇭 ថៃ', 'voice': 'th-TH-PremwadeeNeural'},
+    'vi': {'name': '🇻🇳 វៀតណាម', 'voice': 'vi-VN-HoaiMyNeural'},
+    'lo': {'name': '🇱🇦 ឡាវ', 'voice': 'lo-LA-KeomanyNeural'},
+    'my': {'name': '🇲🇲 ភូមា', 'voice': 'my-MM-NilarNeural'},
+    'id': {'name': '🇮🇩 ឥណ្ឌូណេស៊ី', 'voice': 'id-ID-GadisNeural'},
+    'ms': {'name': '🇲🇾 ម៉ាឡេស៊ី', 'voice': 'ms-MY-YasminNeural'},
+    'tl': {'name': '🇵🇭 ហ្វីលីពីន', 'voice': 'fil-PH-BlessicaNeural'},
+    'ms_bn': {'name': '🇧🇳 ប្រ៊ុយណេ', 'voice': 'ms-MY-YasminNeural', 'google_lang': 'ms'},
+    'ta': {'name': '🇸🇬 សិង្ហបុរី', 'voice': 'ta-SG-VenbaNeural', 'google_lang': 'ta'},
+    'pt': {'name': '🇹🇱 ទីម័រខាងកើត', 'voice': 'pt-PT-RaquelNeural'},
+    'zh-CN': {'name': '🇨🇳 ចិន', 'voice': 'zh-CN-XiaoxiaoNeural'},
+    'en': {'name': '🇬🇧 អង់គ្លេស', 'voice': 'en-US-AriaNeural'}
 }
 
-LANG_NAMES = {
-    'km': '🇰🇭 ខ្មែរ',
-    'en': '🇬🇧 English',
-    'zh-CN': '🇨🇳 中文 (Chinese)'
-}
-
-# ----------------- TELEGRAM BOT LOGIC -----------------
 async def post_init(application):
-    # បង្កើត Menu សម្រាប់ Bot
     await application.bot.set_my_commands([
-        BotCommand("start", "ចាប់ផ្ដើមបត (Start Bot)"),
-        BotCommand("lang", "ជ្រើសរើសភាសាបកប្រែ (Change Language)")
+        BotCommand("start", "ចាប់ផ្ដើមបត (Start Bot)")
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
-        "សួស្តី! 👋 ខ្ញុំគឺជា Bot បកប្រែភាសា (ឥតគិតថ្លៃ ១០០%)។\n\n"
-        "🎙 **មុខងារទី១៖** ផ្ញើសំឡេង (Voice) ឬវីដេអូ មកខ្ញុំដើម្បីបកប្រែ។\n"
-        "📝 **មុខងារទី២៖** ផ្ញើអក្សរ (Text) មកខ្ញុំ ខ្ញុំនឹងបកប្រែ និងអានជាសំឡេងឱ្យអ្នកស្ដាប់! 🚀\n\n"
-        "💡 អ្នកអាចវាយបញ្ជា /lang ដើម្បីប្តូរភាសាដែលត្រូវបកប្រែទៅបាន។"
+        "សួស្តី! 👋 ខ្ញុំគឺជា Bot បកប្រែភាសាអាស៊ាន (ឥតគិតថ្លៃ ១០០%)។\n\n"
+        "ដើម្បីចាប់ផ្ដើម សូមគ្រាន់តែផ្ញើ **សំឡេង (Voice) វីដេអូ ឬអត្ថបទ** មកខ្ញុំ។ បន្ទាប់មក ខ្ញុំនឹងសួរអ្នកថាតើអ្នកចង់បកប្រែវាទៅជាភាសាអ្វី! 🚀"
     )
     await update.message.reply_text(welcome_message)
 
-async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🇰🇭 ខ្មែរ (Khmer)", callback_data='lang_km')],
-        [InlineKeyboardButton("🇬🇧 អង់គ្លេស (English)", callback_data='lang_en')],
-        [InlineKeyboardButton("🇨🇳 ចិន (Chinese)", callback_data='lang_zh-CN')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('សូមជ្រើសរើសភាសាដែលអ្នកចង់ឱ្យខ្ញុំបកប្រែទៅ៖', reply_markup=reply_markup)
-
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def prompt_language_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    # រក្សាទុកឯកសារដែលបញ្ជូនមកនៅក្នុង Memory
+    context.user_data['pending_msg'] = msg
     
-    data = query.data
-    if data.startswith('lang_'):
-        selected_lang = data.split('_')[1]
-        context.user_data['target_lang'] = selected_lang
-        lang_name = LANG_NAMES.get(selected_lang, selected_lang)
-        await query.edit_message_text(text=f"✅ បានប្តូរការកំណត់។ ចាប់ពីពេលនេះទៅ ខ្ញុំនឹងបកប្រែទៅជា៖ **{lang_name}**")
+    # បង្កើតប៊ូតុងជ្រើសរើសភាសា
+    keyboard = []
+    row = []
+    for code, info in LANG_INFO.items():
+        row.append(InlineKeyboardButton(info['name'], callback_data=f"translate_{code}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+        
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await msg.reply_text("សួមជ្រើសរើសភាសាដែលអ្នកចង់ឱ្យខ្ញុំបកប្រែទៅ៖", reply_markup=reply_markup, reply_to_message_id=msg.message_id)
 
 def process_single_chunk(args):
     i, chunk, update_id = args
@@ -93,9 +90,6 @@ def process_single_chunk(args):
     return i, text
 
 def translate_text_sync(text, target_lang):
-    """
-    បកប្រែអក្សរដោយប្រើប្រាស់ Google Translate API ផ្ទាល់
-    """
     try:
         url = "https://translate.googleapis.com/translate_a/single"
         params = {
@@ -141,25 +135,18 @@ def process_audio_sync(input_path, update_id, target_lang):
     except Exception as e:
         return None, f"❌ មានបញ្ហាកើតឡើងក្នុងការដំណើរការ៖ {str(e)}"
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_text = update.message.text
-    target_lang = context.user_data.get('target_lang', 'km')
-    
-    processing_msg = await update.message.reply_text("⏳ កំពុងបកប្រែ និងអានជាសំឡេង...")
-    
+async def process_text_action(msg, processing_msg, target_lang, voice_id):
     try:
-        translated_text = await asyncio.to_thread(translate_text_sync, user_text, target_lang)
+        translated_text = await asyncio.to_thread(translate_text_sync, msg.text, target_lang)
         
-        audio_path = f"temp_tts_{update.update_id}.mp3"
-        voice_id = VOICES.get(target_lang, 'km-KH-SreymomNeural')
-        
+        audio_path = f"temp_tts_{msg.message_id}.mp3"
         communicate = edge_tts.Communicate(translated_text, voice_id)
         await communicate.save(audio_path)
         
         await processing_msg.edit_text(f"✅ **ចុចលើអត្ថបទខាងក្រោមដើម្បី Copy:**\n\n`{translated_text}`", parse_mode="Markdown")
         
         with open(audio_path, 'rb') as audio_file:
-            await update.message.reply_voice(audio_file)
+            await msg.reply_voice(audio_file)
             
         if os.path.exists(audio_path):
             os.remove(audio_path)
@@ -167,40 +154,30 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error TTS: {e}")
         await processing_msg.edit_text(f"❌ មានបញ្ហា៖ {str(e)}")
 
-async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = update.message
-    target_lang = context.user_data.get('target_lang', 'km')
+async def process_media_action(msg, processing_msg, target_lang, voice_id):
     file_obj = None
-
-    if message.video:
-        file_obj = await message.video.get_file()
+    if msg.video:
+        file_obj = await msg.video.get_file()
         file_extension = ".mp4"
-    elif message.audio:
-        file_obj = await message.audio.get_file()
+    elif msg.audio:
+        file_obj = await msg.audio.get_file()
         file_extension = ".mp3"
-    elif message.voice:
-        file_obj = await message.voice.get_file()
+    elif msg.voice:
+        file_obj = await msg.voice.get_file()
         file_extension = ".ogg"
-    elif message.document:
-        doc = message.document
-        if doc.mime_type and ("video" in doc.mime_type or "audio" in doc.mime_type):
-            file_obj = await doc.get_file()
-            file_extension = os.path.splitext(doc.file_name)[1]
+    elif msg.document:
+        if msg.document.mime_type and ("video" in msg.document.mime_type or "audio" in msg.document.mime_type):
+            file_obj = await msg.document.get_file()
+            file_extension = os.path.splitext(msg.document.file_name)[1]
         else:
-            await message.reply_text("សូមផ្ញើតែឯកសារវីដេអូ ឬសំឡេង (MP3, WAV, MP4, OGG) ប៉ុណ្ណោះ!")
+            await processing_msg.edit_text("❌ សូមផ្ញើតែឯកសារវីដេអូ ឬសំឡេងប៉ុណ្ណោះ!")
             return
-    else:
-        await message.reply_text("សូមផ្ញើឯកសារវីដេអូ ឬសំឡេងមកកាន់បត ដើម្បីធ្វើការបកប្រែ។")
-        return
-
-    processing_msg = await message.reply_text("⏳ កំពុងទាញយកឯកសារ និងដំណើរការ... (អាចប្រើពេលបន្តិច)")
-    
-    input_path = f"temp_input_{update.update_id}{file_extension}"
+            
+    input_path = f"temp_input_{msg.message_id}{file_extension}"
     
     try:
         await file_obj.download_to_drive(input_path)
-
-        result = await asyncio.to_thread(process_audio_sync, input_path, update.update_id, target_lang)
+        result = await asyncio.to_thread(process_audio_sync, input_path, msg.message_id, target_lang)
         
         if result[0] is None:
             await processing_msg.edit_text(result[1])
@@ -213,34 +190,60 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"📝 *អត្ថបទដើម:*\n`{original_text}`"
             )
             await processing_msg.edit_text(result_text, parse_mode="Markdown")
+            
+            # បង្កើតជាសំឡេងត្រលប់ទៅវិញទោះជាផ្ញើវីដេអូក៏ដោយ
+            audio_path = f"temp_tts_media_{msg.message_id}.mp3"
+            communicate = edge_tts.Communicate(translated_text, voice_id)
+            await communicate.save(audio_path)
+            with open(audio_path, 'rb') as audio_file:
+                await msg.reply_voice(audio_file)
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
 
     except Exception as e:
         logging.error(f"Error: {e}")
         await processing_msg.edit_text(f"❌ មានបញ្ហាកើតឡើង៖ {str(e)}")
-
     finally:
         if os.path.exists(input_path):
             os.remove(input_path)
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    
+    if data.startswith('translate_'):
+        code = data.split('_', 1)[1]
+        msg = context.user_data.get('pending_msg')
+        
+        if not msg:
+            await query.edit_message_text("❌ ឯកសារនេះផុតកំណត់ហើយ។ សូមផ្ញើឯកសារ ឬអក្សរម្ដងទៀត។")
+            return
+            
+        target_info = LANG_INFO[code]
+        target_lang = target_info.get('google_lang', code)
+        voice_id = target_info['voice']
+        
+        await query.edit_message_text(f"⏳ កំពុងដំណើរការ និងបកប្រែទៅជា **{target_info['name']}**...")
+        processing_msg = query.message
+        
+        if msg.text:
+            await process_text_action(msg, processing_msg, target_lang, voice_id)
+        else:
+            await process_media_action(msg, processing_msg, target_lang, voice_id)
 
 def main():
     application = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
     
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(CallbackQueryHandler(button_callback))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL, handle_media))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prompt_language_selection))
+    application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL, prompt_language_selection))
     
     port = int(os.environ.get("PORT", 10000))
-    
     if RENDER_URL:
         print(f"🤖 Telegram Bot ដំណើរការតាមរយៈ Webhook នៅលើ URL: {RENDER_URL}")
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path=TOKEN,
-            webhook_url=f"{RENDER_URL}/{TOKEN}"
-        )
+        application.run_webhook(listen="0.0.0.0", port=port, url_path=TOKEN, webhook_url=f"{RENDER_URL}/{TOKEN}")
     else:
         print("🤖 Telegram Bot ដំណើរការតាមរយៈ Polling...")
         application.run_polling()
