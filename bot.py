@@ -179,6 +179,7 @@ async def top_up_info(update, context):
         "3️⃣ ប្រព័ន្ធនឹងបញ្ជូនវិក្កយបត្រនេះទៅ Admin ដោយស្វ័យប្រវត្តិ។\n\n"
         "Admin នឹងធ្វើការផ្ទៀងផ្ទាត់ និងបញ្ចូលកាក់ជូនភ្លាមៗ!"
     )
+    context.user_data['awaiting_receipt'] = True
     if os.path.exists("khqr.png"):
         with open("khqr.png", "rb") as photo:
             await update.message.reply_photo(photo, caption=msg, parse_mode="Markdown")
@@ -234,34 +235,39 @@ async def prompt_language_selection(update: Update, context: ContextTypes.DEFAUL
             context.user_data['awaiting_addcoin'] = False
         return
 
-    # ឆែកមើលវិក្កយបត្រ (Photo)
+    # ឆែកមើលវិក្កយបត្រ (Photo) ឬ រូបភាពសម្រាប់បកប្រែ
     if update.message.photo:
         if update.message.chat.type != 'private':
             return
-        photo = update.message.photo[-1]
-        file_unique_id = photo.file_unique_id
-        user_id = update.effective_user.id
-        
-        if db.check_receipt(file_unique_id):
-            await update.message.reply_text("❌ វិក្កយបត្រនេះត្រូវបានផ្ញើរួចម្ដងហើយ! ហាមផ្ញើវិក្កយបត្រស្ទួន។")
-            return
             
-        db.save_receipt(file_unique_id, user_id)
-        
-        sent_to_admin = False
-        for admin_id in ADMIN_IDS:
-            try:
-                caption = f"🧾 **មានវិក្កយបត្រថ្មីពីភ្ញៀវ!**\n👤 ភ្ញៀវ ID: `{user_id}`\n\nវាយបញ្ជាខាងក្រោមដើម្បីបញ្ចូលកាក់ឱ្យគាត់៖\n`/addcoin {user_id} [ចំនួនកាក់]`"
-                await context.bot.send_photo(chat_id=admin_id, photo=photo.file_id, caption=caption, parse_mode="Markdown")
-                sent_to_admin = True
-            except:
-                pass
+        if context.user_data.get('awaiting_receipt'):
+            photo = update.message.photo[-1]
+            file_unique_id = photo.file_unique_id
+            user_id = update.effective_user.id
+            
+            if db.check_receipt(file_unique_id):
+                await update.message.reply_text("❌ វិក្កយបត្រនេះត្រូវបានផ្ញើរួចម្ដងហើយ! ហាមផ្ញើវិក្កយបត្រស្ទួន។")
+                return
                 
-        if sent_to_admin:
-            await update.message.reply_text("✅ វិក្កយបត្ររបស់អ្នកត្រូវបានបញ្ជូនទៅកាន់ Admin រួចរាល់ហើយ។ សូមរង់ចាំការបញ្ចូលកាក់បន្តិច!")
-        else:
-            await update.message.reply_text("⚠️ មានបញ្ហាក្នុងការបញ្ជូនទៅ Admin។ សូមទាក់ទង Admin ដោយផ្ទាល់។")
-        return
+            db.save_receipt(file_unique_id, user_id)
+            
+            sent_to_admin = False
+            for admin_id in ADMIN_IDS:
+                try:
+                    caption = f"🧾 **មានវិក្កយបត្រថ្មីពីភ្ញៀវ!**\n👤 ភ្ញៀវ ID: `{user_id}`\n\nវាយបញ្ជាខាងក្រោមដើម្បីបញ្ចូលកាក់ឱ្យគាត់៖\n`/addcoin {user_id} [ចំនួនកាក់]`"
+                    await context.bot.send_photo(chat_id=admin_id, photo=photo.file_id, caption=caption, parse_mode="Markdown")
+                    sent_to_admin = True
+                except:
+                    pass
+                    
+            if sent_to_admin:
+                await update.message.reply_text("✅ វិក្កយបត្ររបស់អ្នកត្រូវបានបញ្ជូនទៅកាន់ Admin រួចរាល់ហើយ។ សូមរង់ចាំការបញ្ចូលកាក់បន្តិច!")
+            else:
+                await update.message.reply_text("⚠️ មានបញ្ហាក្នុងការបញ្ជូនទៅ Admin។ សូមទាក់ទង Admin ដោយផ្ទាល់។")
+                
+            context.user_data['awaiting_receipt'] = False
+            return
+        # បើមិនមែនជា Receipt ទេ, អនុញ្ញាតឱ្យវាហូរទៅជាការបកប្រែ (Translation)
 
     # បើកុំឱ្យឆែកសមាជិកពេលនៅក្នុងក្រុម (Group Chat) ព្រោះ Bot អាចនឹងឆ្លើយតបគ្រប់សារ
     if update.message.chat.type != 'private':
@@ -275,7 +281,7 @@ async def prompt_language_selection(update: Update, context: ContextTypes.DEFAUL
     # រក្សាទុកឯកសារនៅក្នុង Memory
     context.user_data['pending_msg'] = msg
     
-    if msg.text:
+    if extracted_text:
         doc_type = "📝 អត្ថបទ (Text)"
     elif msg.video: 
         doc_type = "🎬 វីដេអូ (Video)"
@@ -450,9 +456,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         processing_msg = query.message
         
-        if msg.text:
+        if extracted_text:
             await query.edit_message_text(f"⏳ កំពុងបកប្រែអត្ថបទទៅជា **{target_info['name']}** និងអានជាសំឡេង...")
-            await process_text_action(msg, processing_msg, target_lang, voice_id)
+            class MockMsg: pass
+            mock_msg = MockMsg()
+            mock_msg.text = extracted_text
+            mock_msg.message_id = msg.message_id
+            mock_msg.reply_voice = msg.reply_voice
+            await process_text_action(mock_msg, processing_msg, target_lang, voice_id)
         else:
             await query.edit_message_text(f"⚡️ ឱ្យ Groq AI ស្តាប់សំឡេង និងបកប្រែទៅជា **{target_info['name']}**...")
             await process_media_action(msg, processing_msg, target_lang, voice_id)

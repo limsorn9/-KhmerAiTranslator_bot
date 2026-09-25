@@ -1,7 +1,7 @@
 FROM python:3.10-slim
 
-# ដំឡើង FFmpeg សម្រាប់ដំណើរការសំឡេង
-RUN apt-get update && apt-get install -y ffmpeg
+# ដំឡើង FFmpeg និង Tesseract OCR សម្រាប់ដំណើរការសំឡេង និងទាញអក្សរពីរូបភាព
+RUN apt-get update && apt-get install -y ffmpeg tesseract-ocr tesseract-ocr-eng tesseract-ocr-khm tesseract-ocr-all
 
 WORKDIR /app
 
