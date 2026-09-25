@@ -24,20 +24,32 @@ RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
 # ភាសាអាស៊ានទាំង ១១ បូកបន្ថែម ចិន និង អង់គ្លេស
 LANG_INFO = {
-    'km': {'name': '🇰🇭 ខ្មែរ', 'voice': 'km-KH-SreymomNeural'},
-    'th': {'name': '🇹🇭 ថៃ', 'voice': 'th-TH-PremwadeeNeural'},
-    'vi': {'name': '🇻🇳 វៀតណាម', 'voice': 'vi-VN-HoaiMyNeural'},
-    'lo': {'name': '🇱🇦 ឡាវ', 'voice': 'lo-LA-KeomanyNeural'},
-    'my': {'name': '🇲🇲 ភូមា', 'voice': 'my-MM-NilarNeural'},
-    'id': {'name': '🇮🇩 ឥណ្ឌូណេស៊ី', 'voice': 'id-ID-GadisNeural'},
-    'ms': {'name': '🇲🇾 ម៉ាឡេស៊ី', 'voice': 'ms-MY-YasminNeural'},
-    'tl': {'name': '🇵🇭 ហ្វីលីពីន', 'voice': 'fil-PH-BlessicaNeural'},
-    'ms_bn': {'name': '🇧🇳 ប្រ៊ុយណេ', 'voice': 'ms-MY-YasminNeural', 'google_lang': 'ms'},
-    'ta': {'name': '🇸🇬 សិង្ហបុរី', 'voice': 'ta-SG-VenbaNeural', 'google_lang': 'ta'},
-    'pt': {'name': '🇹🇱 ទីម័រខាងកើត', 'voice': 'pt-PT-RaquelNeural'},
-    'zh-CN': {'name': '🇨🇳 ចិន', 'voice': 'zh-CN-XiaoxiaoNeural'},
-    'en': {'name': '🇬🇧 អង់គ្លេស', 'voice': 'en-US-AriaNeural'}
+    'km': {'name': '🇰🇭 ខ្មែរ', 'voice': 'km-KH-SreymomNeural', 'sr_lang': 'km-KH'},
+    'th': {'name': '🇹🇭 ថៃ', 'voice': 'th-TH-PremwadeeNeural', 'sr_lang': 'th-TH'},
+    'vi': {'name': '🇻🇳 វៀតណាម', 'voice': 'vi-VN-HoaiMyNeural', 'sr_lang': 'vi-VN'},
+    'lo': {'name': '🇱🇦 ឡាវ', 'voice': 'lo-LA-KeomanyNeural', 'sr_lang': 'lo-LA'},
+    'my': {'name': '🇲🇲 ភូមា', 'voice': 'my-MM-NilarNeural', 'sr_lang': 'my-MM'},
+    'id': {'name': '🇮🇩 ឥណ្ឌូណេស៊ី', 'voice': 'id-ID-GadisNeural', 'sr_lang': 'id-ID'},
+    'ms': {'name': '🇲🇾 ម៉ាឡេស៊ី', 'voice': 'ms-MY-YasminNeural', 'sr_lang': 'ms-MY'},
+    'tl': {'name': '🇵🇭 ហ្វីលីពីន', 'voice': 'fil-PH-BlessicaNeural', 'sr_lang': 'fil-PH'},
+    'ms_bn': {'name': '🇧🇳 ប្រ៊ុយណេ', 'voice': 'ms-MY-YasminNeural', 'google_lang': 'ms', 'sr_lang': 'ms-MY'},
+    'ta': {'name': '🇸🇬 សិង្ហបុរី', 'voice': 'ta-SG-VenbaNeural', 'google_lang': 'ta', 'sr_lang': 'ta-SG'},
+    'pt': {'name': '🇹🇱 ទីម័រខាងកើត', 'voice': 'pt-PT-RaquelNeural', 'sr_lang': 'pt-PT'},
+    'zh-CN': {'name': '🇨🇳 ចិន', 'voice': 'zh-CN-XiaoxiaoNeural', 'sr_lang': 'zh-CN'},
+    'en': {'name': '🇬🇧 អង់គ្លេស', 'voice': 'en-US-AriaNeural', 'sr_lang': 'en-US'}
 }
+
+def build_language_keyboard(prefix):
+    keyboard = []
+    row = []
+    for code, info in LANG_INFO.items():
+        row.append(InlineKeyboardButton(info['name'], callback_data=f"{prefix}_{code}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    return InlineKeyboardMarkup(keyboard)
 
 async def post_init(application):
     await application.bot.set_my_commands([
@@ -53,25 +65,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def prompt_language_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
-    # រក្សាទុកឯកសារដែលបញ្ជូនមកនៅក្នុង Memory
+    # រក្សាទុកឯកសារនៅក្នុង Memory
     context.user_data['pending_msg'] = msg
     
-    # បង្កើតប៊ូតុងជ្រើសរើសភាសា
-    keyboard = []
-    row = []
-    for code, info in LANG_INFO.items():
-        row.append(InlineKeyboardButton(info['name'], callback_data=f"translate_{code}"))
-        if len(row) == 2:
-            keyboard.append(row)
-            row = []
-    if row:
-        keyboard.append(row)
+    if msg.text:
+        doc_type = "📝 អត្ថបទ (Text)"
+        prompt_text = (
+            f"📥 **ប្រភេទឯកសារ៖** {doc_type}\n"
+            f"🗣 **ភាសាដើម៖** (ស្វែងរកដោយស្វ័យប្រវត្តិ 🤖)\n\n"
+            f"🎯 តើអ្នកចង់ឱ្យខ្ញុំបកប្រែទៅជាភាសាអ្វី?"
+        )
+        keyboard = build_language_keyboard("translate")
+    else:
+        if msg.video: doc_type = "🎬 វីដេអូ (Video)"
+        elif msg.audio: doc_type = "🎵 ចម្រៀង/សំឡេង (Audio)"
+        elif msg.voice: doc_type = "🎙 សារសំឡេង (Voice Note)"
+        else: doc_type = "📁 ឯកសារ (Document)"
         
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await msg.reply_text("សួមជ្រើសរើសភាសាដែលអ្នកចង់ឱ្យខ្ញុំបកប្រែទៅ៖", reply_markup=reply_markup, reply_to_message_id=msg.message_id)
+        context.user_data['pending_doc_type'] = doc_type
+        prompt_text = (
+            f"📥 **ប្រភេទឯកសារ៖** {doc_type}\n\n"
+            f"❓ តើសំឡេងនេះនិយាយជាភាសាអ្វី? (សូមជ្រើសរើសភាសាដើម)"
+        )
+        keyboard = build_language_keyboard("source")
+        
+    await msg.reply_text(prompt_text, reply_markup=keyboard, reply_to_message_id=msg.message_id)
 
 def process_single_chunk(args):
-    i, chunk, update_id = args
+    i, chunk, update_id, sr_lang = args
     chunk_path = f"temp_chunk_{update_id}_{i}.wav"
     chunk.export(chunk_path, format="wav")
     recognizer = sr.Recognizer()
@@ -79,7 +100,8 @@ def process_single_chunk(args):
     with sr.AudioFile(chunk_path) as source:
         audio_data = recognizer.record(source)
         try:
-            text = recognizer.recognize_google(audio_data, language='en-US')
+            # ប្រើប្រាស់ភាសាដើមដែល User បានជ្រើសរើស ធ្វើឱ្យស្ដាប់បានត្រឹមត្រូវ ១០០%
+            text = recognizer.recognize_google(audio_data, language=sr_lang)
         except sr.UnknownValueError:
             pass
         except sr.RequestError as e:
@@ -108,7 +130,7 @@ def translate_text_sync(text, target_lang):
         logging.error(f"Translation error: {e}")
         return text
 
-def process_audio_sync(input_path, update_id, target_lang):
+def process_audio_sync(input_path, update_id, sr_lang, target_lang):
     try:
         audio = AudioSegment.from_file(input_path)
         audio = audio.set_channels(1).set_frame_rate(16000)
@@ -117,14 +139,14 @@ def process_audio_sync(input_path, update_id, target_lang):
         chunks = [audio[i:i+chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
         
         with ThreadPoolExecutor(max_workers=5) as executor:
-            args_list = [(i, chunk, update_id) for i, chunk in enumerate(chunks)]
+            args_list = [(i, chunk, update_id, sr_lang) for i, chunk in enumerate(chunks)]
             results = list(executor.map(process_single_chunk, args_list))
             
         results.sort(key=lambda x: x[0])
         original_text = " ".join([x[1] for x in results if x[1]])
 
         if not original_text.strip():
-            return None, "❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬជាភាសាផ្សេង។"
+            return None, "❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬអ្នកជ្រើសរើសភាសាដើមខុស។"
 
         text_chunks = [original_text[i:i+4000] for i in range(0, len(original_text), 4000)]
         translated_text = ""
@@ -154,7 +176,7 @@ async def process_text_action(msg, processing_msg, target_lang, voice_id):
         logging.error(f"Error TTS: {e}")
         await processing_msg.edit_text(f"❌ មានបញ្ហា៖ {str(e)}")
 
-async def process_media_action(msg, processing_msg, target_lang, voice_id):
+async def process_media_action(msg, processing_msg, sr_lang, target_lang, voice_id):
     file_obj = None
     if msg.video:
         file_obj = await msg.video.get_file()
@@ -177,7 +199,7 @@ async def process_media_action(msg, processing_msg, target_lang, voice_id):
     
     try:
         await file_obj.download_to_drive(input_path)
-        result = await asyncio.to_thread(process_audio_sync, input_path, msg.message_id, target_lang)
+        result = await asyncio.to_thread(process_audio_sync, input_path, msg.message_id, sr_lang, target_lang)
         
         if result[0] is None:
             await processing_msg.edit_text(result[1])
@@ -191,7 +213,7 @@ async def process_media_action(msg, processing_msg, target_lang, voice_id):
             )
             await processing_msg.edit_text(result_text, parse_mode="Markdown")
             
-            # បង្កើតជាសំឡេងត្រលប់ទៅវិញទោះជាផ្ញើវីដេអូក៏ដោយ
+            # បង្កើតជាសំឡេងត្រលប់ទៅវិញ
             audio_path = f"temp_tts_media_{msg.message_id}.mp3"
             communicate = edge_tts.Communicate(translated_text, voice_id)
             await communicate.save(audio_path)
@@ -212,25 +234,44 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
     
-    if data.startswith('translate_'):
-        code = data.split('_', 1)[1]
-        msg = context.user_data.get('pending_msg')
+    msg = context.user_data.get('pending_msg')
+    if not msg:
+        await query.edit_message_text("❌ ឯកសារនេះផុតកំណត់ហើយ។ សូមផ្ញើឯកសារ ឬអក្សរម្ដងទៀត។")
+        return
         
-        if not msg:
-            await query.edit_message_text("❌ ឯកសារនេះផុតកំណត់ហើយ។ សូមផ្ញើឯកសារ ឬអក្សរម្ដងទៀត។")
-            return
-            
+    if data.startswith('source_'):
+        code = data.split('_', 1)[1]
+        context.user_data['pending_source'] = code
+        doc_type = context.user_data.get('pending_doc_type', 'ឯកសារ')
+        source_name = LANG_INFO[code]['name']
+        
+        prompt_text = (
+            f"📥 **ប្រភេទឯកសារ៖** {doc_type}\n"
+            f"🗣 **ភាសាដើម៖** {source_name}\n\n"
+            f"🎯 តើអ្នកចង់ឱ្យខ្ញុំបកប្រែទៅជាភាសាអ្វី?"
+        )
+        keyboard = build_language_keyboard("translate")
+        await query.edit_message_text(prompt_text, reply_markup=keyboard)
+        
+    elif data.startswith('translate_'):
+        code = data.split('_', 1)[1]
+        
         target_info = LANG_INFO[code]
         target_lang = target_info.get('google_lang', code)
         voice_id = target_info['voice']
         
-        await query.edit_message_text(f"⏳ កំពុងដំណើរការ និងបកប្រែទៅជា **{target_info['name']}**...")
         processing_msg = query.message
         
         if msg.text:
+            await query.edit_message_text(f"⏳ កំពុងបកប្រែអត្ថបទទៅជា **{target_info['name']}** និងអានជាសំឡេង...")
             await process_text_action(msg, processing_msg, target_lang, voice_id)
         else:
-            await process_media_action(msg, processing_msg, target_lang, voice_id)
+            source_code = context.user_data.get('pending_source', 'km')
+            source_info = LANG_INFO[source_code]
+            sr_lang = source_info['sr_lang']
+            
+            await query.edit_message_text(f"⏳ កំពុងស្ដាប់សំឡេងម៉ាស៊ីន និងបកប្រែទៅជា **{target_info['name']}**...")
+            await process_media_action(msg, processing_msg, sr_lang, target_lang, voice_id)
 
 def main():
     application = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
