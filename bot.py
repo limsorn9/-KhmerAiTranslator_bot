@@ -156,7 +156,7 @@ async def top_up_info(update, context):
             "1️⃣ សូមវេរប្រាក់ចូល KHQR ខាងលើ\n"
             "2️⃣ ថតអេក្រង់ (Screenshot) វិក្កយបត្រ រួចផ្ញើចូលមកក្នុងនេះផ្ទាល់\n"
             "3️⃣ ប្រព័ន្ធនឹងបញ្ជូនវិក្កយបត្រនេះទៅ Admin ដោយស្វ័យប្រវត្តិ។\n\n"
-            "Admin នឹងធ្វើការផ្ទៀងផ្ទាត់ និងបញ្ចូលកាក់ជូនភ្លាមៗ!"
+            "Admin (<b>@limsorn</b>) នឹងធ្វើការផ្ទៀងផ្ទាត់ និងបញ្ចូលកាក់ជូនភ្លាមៗ!"
         )
         import os
         if os.path.exists("khqr.png"):
@@ -246,7 +246,7 @@ async def prompt_language_selection(update: Update, context: ContextTypes.DEFAUL
             if sent_to_admin:
                 await update.message.reply_text("✅ វិក្កយបត្ររបស់អ្នកត្រូវបានបញ្ជូនទៅកាន់ Admin រួចរាល់ហើយ។ សូមរង់ចាំការបញ្ចូលកាក់បន្តិច!")
             else:
-                await update.message.reply_text("⚠️ មានបញ្ហាក្នុងការបញ្ជូនទៅ Admin។ សូមទាក់ទង Admin ដោយផ្ទាល់។")
+                await update.message.reply_text("⚠️ មានបញ្ហាក្នុងការបញ្ជូនទៅ Admin។ សូមទាក់ទង Admin ដោយផ្ទាល់: @limsorn")
                 
             context.user_data['awaiting_receipt'] = False
             return
@@ -477,7 +477,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if sent_to_admin:
             await query.edit_message_text("✅ វិក្កយបត្ររបស់អ្នកត្រូវបានបញ្ជូនទៅកាន់ Admin រួចរាល់ហើយ។ សូមរង់ចាំការបញ្ចូលកាក់បន្តិច!")
         else:
-            await query.edit_message_text("⚠️ មានបញ្ហាក្នុងការបញ្ជូនទៅ Admin។ សូមទាក់ទង Admin ដោយផ្ទាល់។")
+            await query.edit_message_text("⚠️ មានបញ្ហាក្នុងការបញ្ជូនទៅ Admin។ សូមទាក់ទង Admin ដោយផ្ទាល់: @limsorn")
         return
         
     if data.startswith('translate_'):
