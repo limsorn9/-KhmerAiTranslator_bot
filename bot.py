@@ -115,7 +115,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = ApplicationBuilder().token(TOKEN).build()
-    application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.DOCUMENT, handle_media))
+    application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL, handle_media))
     
     port = int(os.environ.get("PORT", 10000))
     
