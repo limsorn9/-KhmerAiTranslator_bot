@@ -32,36 +32,46 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message)
 
+from concurrent.futures import ThreadPoolExecutor
+
+def process_single_chunk(args):
+    i, chunk, update_id = args
+    chunk_path = f"temp_chunk_{update_id}_{i}.wav"
+    chunk.export(chunk_path, format="wav")
+    recognizer = sr.Recognizer()
+    text = ""
+    with sr.AudioFile(chunk_path) as source:
+        audio_data = recognizer.record(source)
+        try:
+            text = recognizer.recognize_google(audio_data, language='en-US')
+        except sr.UnknownValueError:
+            pass
+        except sr.RequestError as e:
+            logging.error(f"Google API Error: {e}")
+            
+    if os.path.exists(chunk_path):
+        os.remove(chunk_path)
+    return i, text
+
 def process_audio_sync(input_path, update_id):
     """
     រត់កូដធ្ងន់ៗ (បម្លែងសំឡេង, ស្ដាប់, និងបកប្រែ) នៅក្នុង Background Thread 
-    ដើម្បីកុំឱ្យគាំង Event Loop របស់ Telegram Bot ។
     """
     try:
         audio = AudioSegment.from_file(input_path)
         audio = audio.set_channels(1).set_frame_rate(16000)
 
+        # កាត់សំឡេងជាដុំតូចៗ ១នាទីម្ដង
         chunk_length_ms = 60000 
         chunks = [audio[i:i+chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
         
-        recognizer = sr.Recognizer()
-        original_text = ""
-        
-        for i, chunk in enumerate(chunks):
-            chunk_path = f"temp_chunk_{update_id}_{i}.wav"
-            chunk.export(chunk_path, format="wav")
-            with sr.AudioFile(chunk_path) as source:
-                audio_data = recognizer.record(source)
-                try:
-                    text = recognizer.recognize_google(audio_data, language='en-US')
-                    original_text += text + ". "
-                except sr.UnknownValueError:
-                    pass
-                except sr.RequestError as e:
-                    logging.error(f"Google API Error: {e}")
+        # ប្រើ Multithreading ដើម្បីបញ្ជូនសំឡេងទៅ Google ព្រមៗគ្នា (ដើរលឿនជាងមុន ៥ដង)
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            args_list = [(i, chunk, update_id) for i, chunk in enumerate(chunks)]
+            results = list(executor.map(process_single_chunk, args_list))
             
-            if os.path.exists(chunk_path):
-                os.remove(chunk_path)
+        results.sort(key=lambda x: x[0]) # តម្រៀបតាមលំដាប់ដើម
+        original_text = " ".join([x[1] for x in results if x[1]])
 
         if not original_text.strip():
             return None, "❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬជាភាសាផ្សេង។"
