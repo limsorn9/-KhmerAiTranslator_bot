@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 import speech_recognition as sr
@@ -29,6 +30,50 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(welcome_message)
 
+def process_audio_sync(input_path, update_id):
+    """
+    រត់កូដធ្ងន់ៗ (បម្លែងសំឡេង, ស្ដាប់, និងបកប្រែ) នៅក្នុង Background Thread 
+    ដើម្បីកុំឱ្យគាំង Event Loop របស់ Telegram Bot ។
+    """
+    try:
+        audio = AudioSegment.from_file(input_path)
+        audio = audio.set_channels(1).set_frame_rate(16000)
+
+        chunk_length_ms = 60000 
+        chunks = [audio[i:i+chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
+        
+        recognizer = sr.Recognizer()
+        original_text = ""
+        
+        for i, chunk in enumerate(chunks):
+            chunk_path = f"temp_chunk_{update_id}_{i}.wav"
+            chunk.export(chunk_path, format="wav")
+            with sr.AudioFile(chunk_path) as source:
+                audio_data = recognizer.record(source)
+                try:
+                    text = recognizer.recognize_google(audio_data, language='en-US')
+                    original_text += text + ". "
+                except sr.UnknownValueError:
+                    pass
+                except sr.RequestError as e:
+                    logging.error(f"Google API Error: {e}")
+            
+            if os.path.exists(chunk_path):
+                os.remove(chunk_path)
+
+        if not original_text.strip():
+            return None, "❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬជាភាសាផ្សេង។"
+
+        translator = GoogleTranslator(source='auto', target=TARGET_LANGUAGE)
+        text_chunks = [original_text[i:i+4000] for i in range(0, len(original_text), 4000)]
+        translated_text = ""
+        for t_chunk in text_chunks:
+            translated_text += translator.translate(t_chunk) + " "
+
+        return original_text, translated_text
+    except Exception as e:
+        return None, f"❌ មានបញ្ហាកើតឡើងក្នុងការដំណើរការ៖ {str(e)}"
+
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     file_obj = None
@@ -54,65 +99,27 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await message.reply_text("សូមផ្ញើឯកសារវីដេអូ ឬសំឡេងមកកាន់បត ដើម្បីធ្វើការបកប្រែ។")
         return
 
-    processing_msg = await message.reply_text("⏳ កំពុងទាញយកឯកសារ... សូមរង់ចាំបន្តិច។")
+    processing_msg = await message.reply_text("⏳ កំពុងទាញយកឯកសារ និងដំណើរការ... (អាចប្រើពេលបន្តិច)")
     
     input_path = f"temp_input_{update.update_id}{file_extension}"
     
     try:
         await file_obj.download_to_drive(input_path)
 
-        # បម្លែងទៅជា WAV
-        await processing_msg.edit_text("⏳ កំពុងទាញយកសំឡេងចេញពីឯកសារ (Audio Extraction)...")
-        audio = AudioSegment.from_file(input_path)
-        audio = audio.set_channels(1).set_frame_rate(16000)
-
-        # កាត់សំឡេងជាដុំតូចៗ (១នាទីម្ដង) ដើម្បីកុំឲ្យ Google API បដិសេធ
-        chunk_length_ms = 60000 
-        chunks = [audio[i:i+chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
+        # បញ្ជូនការងារធ្ងន់ៗទៅកាន់ Thread ផ្សេងដើម្បីកុំឱ្យគាំង Telegram Bot
+        result = await asyncio.to_thread(process_audio_sync, input_path, update.update_id)
         
-        recognizer = sr.Recognizer()
-        original_text = ""
-        
-        await processing_msg.edit_text(f"⏳ កំពុងស្តាប់សំឡេង និងសរសេរជាអក្សរ ({len(chunks)} ផ្នែក)...")
-        
-        for i, chunk in enumerate(chunks):
-            chunk_path = f"temp_chunk_{update.update_id}_{i}.wav"
-            chunk.export(chunk_path, format="wav")
-            with sr.AudioFile(chunk_path) as source:
-                audio_data = recognizer.record(source)
-                try:
-                    # ស្តាប់សំឡេង (អាចដូរ 'en-US' ទៅជាភាសាផ្សេងបាន បើដឹងថាជាភាសាអី)
-                    text = recognizer.recognize_google(audio_data, language='en-US')
-                    original_text += text + ". "
-                except sr.UnknownValueError:
-                    pass # រំលងបើស្ដាប់អត់បាន
-                except sr.RequestError as e:
-                    logging.error(f"Google API Error: {e}")
-            
-            if os.path.exists(chunk_path):
-                os.remove(chunk_path)
-
-        if not original_text.strip():
-            await processing_msg.edit_text("❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬជាភាសាផ្សេង។")
-            return
-
-        # បកប្រែ
-        await processing_msg.edit_text("⏳ កំពុងបកប្រែអត្ថបទមកជាភាសាខ្មែរ...")
-        translator = GoogleTranslator(source='auto', target=TARGET_LANGUAGE)
-        
-        # deep-translator មានកំណត់ប្រវែងអត្ថបទ ដូច្នេះយើងត្រូវបកប្រែជាដុំៗដូចគ្នា
-        text_chunks = [original_text[i:i+4000] for i in range(0, len(original_text), 4000)]
-        translated_text = ""
-        for t_chunk in text_chunks:
-            translated_text += translator.translate(t_chunk) + " "
-
-        result_text = (
-            f"✅ **ការបកប្រែជោគជ័យ (Khmer)**\n\n"
-            f"{translated_text}\n\n"
-            f"---\n"
-            f"📝 *អត្ថបទដើម:* {original_text[:800]}..."
-        )
-        await processing_msg.edit_text(result_text, parse_mode="Markdown")
+        if result[0] is None:
+            await processing_msg.edit_text(result[1])
+        else:
+            original_text, translated_text = result
+            result_text = (
+                f"✅ **ការបកប្រែជោគជ័យ (Khmer)**\n\n"
+                f"{translated_text}\n\n"
+                f"---\n"
+                f"📝 *អត្ថបទដើម:* {original_text[:800]}..."
+            )
+            await processing_msg.edit_text(result_text, parse_mode="Markdown")
 
     except Exception as e:
         logging.error(f"Error: {e}")
