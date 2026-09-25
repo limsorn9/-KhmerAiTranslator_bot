@@ -1,12 +1,13 @@
 import os
 import logging
 import asyncio
-from telegram import Update, BotCommand
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
+from telegram import Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, CallbackQueryHandler, filters
 import speech_recognition as sr
 import requests
 from pydub import AudioSegment
 import edge_tts
+from concurrent.futures import ThreadPoolExecutor
 
 # កំណត់ Logging
 logging.basicConfig(
@@ -14,31 +15,63 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Telegram Token (ទាញយកពី Environment Variables ដែលដាក់ក្នុង Render)
+# Telegram Token
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TOKEN:
     raise ValueError("សូមដាក់ TELEGRAM_TOKEN នៅក្នុង Environment Variables របស់ Render!")
-TARGET_LANGUAGE = "km"
 
 # ទាញយក URL របស់វិបសាយ Render ដោយស្វ័យប្រវត្តិ
 RENDER_URL = os.getenv("RENDER_EXTERNAL_URL", "")
 
+# ភាសា និងសំឡេងរបស់ Microsoft Edge TTS
+VOICES = {
+    'km': 'km-KH-SreymomNeural',
+    'en': 'en-US-AriaNeural',
+    'zh-CN': 'zh-CN-XiaoxiaoNeural'
+}
+
+LANG_NAMES = {
+    'km': '🇰🇭 ខ្មែរ',
+    'en': '🇬🇧 English',
+    'zh-CN': '🇨🇳 中文 (Chinese)'
+}
+
 # ----------------- TELEGRAM BOT LOGIC -----------------
 async def post_init(application):
-    # បង្កើត Menu សម្រាប់ Bot (ប៊ូតុង /start)
+    # បង្កើត Menu សម្រាប់ Bot
     await application.bot.set_my_commands([
-        BotCommand("start", "ចាប់ផ្ដើមបត (Start Bot)")
+        BotCommand("start", "ចាប់ផ្ដើមបត (Start Bot)"),
+        BotCommand("lang", "ជ្រើសរើសភាសាបកប្រែ (Change Language)")
     ])
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = (
         "សួស្តី! 👋 ខ្ញុំគឺជា Bot បកប្រែភាសា (ឥតគិតថ្លៃ ១០០%)។\n\n"
-        "🎙 **មុខងារទី១៖** ផ្ញើសំឡេង (Voice) ឬវីដេអូ មកខ្ញុំដើម្បីបកប្រែជាអក្សរខ្មែរ។\n"
-        "📝 **មុខងារទី២៖** ផ្ញើអក្សរ (Text) មកខ្ញុំ ខ្ញុំនឹងបកប្រែជាភាសាខ្មែរ រួចអានជាសំឡេងឱ្យអ្នកស្ដាប់! 🚀"
+        "🎙 **មុខងារទី១៖** ផ្ញើសំឡេង (Voice) ឬវីដេអូ មកខ្ញុំដើម្បីបកប្រែ។\n"
+        "📝 **មុខងារទី២៖** ផ្ញើអក្សរ (Text) មកខ្ញុំ ខ្ញុំនឹងបកប្រែ និងអានជាសំឡេងឱ្យអ្នកស្ដាប់! 🚀\n\n"
+        "💡 អ្នកអាចវាយបញ្ជា /lang ដើម្បីប្តូរភាសាដែលត្រូវបកប្រែទៅបាន។"
     )
     await update.message.reply_text(welcome_message)
 
-from concurrent.futures import ThreadPoolExecutor
+async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🇰🇭 ខ្មែរ (Khmer)", callback_data='lang_km')],
+        [InlineKeyboardButton("🇬🇧 អង់គ្លេស (English)", callback_data='lang_en')],
+        [InlineKeyboardButton("🇨🇳 ចិន (Chinese)", callback_data='lang_zh-CN')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('សូមជ្រើសរើសភាសាដែលអ្នកចង់ឱ្យខ្ញុំបកប្រែទៅ៖', reply_markup=reply_markup)
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    if data.startswith('lang_'):
+        selected_lang = data.split('_')[1]
+        context.user_data['target_lang'] = selected_lang
+        lang_name = LANG_NAMES.get(selected_lang, selected_lang)
+        await query.edit_message_text(text=f"✅ បានប្តូរការកំណត់។ ចាប់ពីពេលនេះទៅ ខ្ញុំនឹងបកប្រែទៅជា៖ **{lang_name}**")
 
 def process_single_chunk(args):
     i, chunk, update_id = args
@@ -59,48 +92,16 @@ def process_single_chunk(args):
         os.remove(chunk_path)
     return i, text
 
-def process_audio_sync(input_path, update_id):
+def translate_text_sync(text, target_lang):
     """
-    រត់កូដធ្ងន់ៗ (បម្លែងសំឡេង, ស្ដាប់, និងបកប្រែ) នៅក្នុង Background Thread 
-    """
-    try:
-        audio = AudioSegment.from_file(input_path)
-        audio = audio.set_channels(1).set_frame_rate(16000)
-
-        # កាត់សំឡេងជាដុំតូចៗ ១នាទីម្ដង
-        chunk_length_ms = 60000 
-        chunks = [audio[i:i+chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
-        
-        # ប្រើ Multithreading ដើម្បីបញ្ជូនសំឡេងទៅ Google ព្រមៗគ្នា (ដើរលឿនជាងមុន ៥ដង)
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            args_list = [(i, chunk, update_id) for i, chunk in enumerate(chunks)]
-            results = list(executor.map(process_single_chunk, args_list))
-            
-        results.sort(key=lambda x: x[0]) # តម្រៀបតាមលំដាប់ដើម
-        original_text = " ".join([x[1] for x in results if x[1]])
-
-        if not original_text.strip():
-            return None, "❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬជាភាសាផ្សេង។"
-
-        text_chunks = [original_text[i:i+4000] for i in range(0, len(original_text), 4000)]
-        translated_text = ""
-        for t_chunk in text_chunks:
-            translated_text += translate_text_sync(t_chunk) + " "
-
-        return original_text, translated_text
-    except Exception as e:
-        return None, f"❌ មានបញ្ហាកើតឡើងក្នុងការដំណើរការ៖ {str(e)}"
-
-def translate_text_sync(text):
-    """
-    បកប្រែអក្សរដោយប្រើប្រាស់ Google Translate API ផ្ទាល់ (ឥតគិតថ្លៃ និងមិនគាំង)
+    បកប្រែអក្សរដោយប្រើប្រាស់ Google Translate API ផ្ទាល់
     """
     try:
         url = "https://translate.googleapis.com/translate_a/single"
         params = {
             "client": "gtx",
             "sl": "auto",
-            "tl": TARGET_LANGUAGE,
+            "tl": target_lang,
             "dt": "t",
             "q": text
         }
@@ -113,22 +114,50 @@ def translate_text_sync(text):
         logging.error(f"Translation error: {e}")
         return text
 
+def process_audio_sync(input_path, update_id, target_lang):
+    try:
+        audio = AudioSegment.from_file(input_path)
+        audio = audio.set_channels(1).set_frame_rate(16000)
+
+        chunk_length_ms = 60000 
+        chunks = [audio[i:i+chunk_length_ms] for i in range(0, len(audio), chunk_length_ms)]
+        
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            args_list = [(i, chunk, update_id) for i, chunk in enumerate(chunks)]
+            results = list(executor.map(process_single_chunk, args_list))
+            
+        results.sort(key=lambda x: x[0])
+        original_text = " ".join([x[1] for x in results if x[1]])
+
+        if not original_text.strip():
+            return None, "❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬជាភាសាផ្សេង។"
+
+        text_chunks = [original_text[i:i+4000] for i in range(0, len(original_text), 4000)]
+        translated_text = ""
+        for t_chunk in text_chunks:
+            translated_text += translate_text_sync(t_chunk, target_lang) + " "
+
+        return original_text, translated_text
+    except Exception as e:
+        return None, f"❌ មានបញ្ហាកើតឡើងក្នុងការដំណើរការ៖ {str(e)}"
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
+    target_lang = context.user_data.get('target_lang', 'km')
+    
     processing_msg = await update.message.reply_text("⏳ កំពុងបកប្រែ និងអានជាសំឡេង...")
     
     try:
-        translated_text = await asyncio.to_thread(translate_text_sync, user_text)
+        translated_text = await asyncio.to_thread(translate_text_sync, user_text, target_lang)
         
-        # ប្រើប្រាស់ Microsoft Edge TTS សម្រាប់អានសំឡេងខ្មែរឱ្យពិរោះ
-        # km-KH-SreymomNeural គឺសំឡេងស្រី | km-KH-PisethNeural គឺសំឡេងប្រុស
         audio_path = f"temp_tts_{update.update_id}.mp3"
-        communicate = edge_tts.Communicate(translated_text, "km-KH-SreymomNeural")
+        voice_id = VOICES.get(target_lang, 'km-KH-SreymomNeural')
+        
+        communicate = edge_tts.Communicate(translated_text, voice_id)
         await communicate.save(audio_path)
         
         await processing_msg.edit_text(f"✅ **ចុចលើអត្ថបទខាងក្រោមដើម្បី Copy:**\n\n`{translated_text}`", parse_mode="Markdown")
         
-        # ផ្ញើសំឡេងត្រលប់ទៅវិញ
         with open(audio_path, 'rb') as audio_file:
             await update.message.reply_voice(audio_file)
             
@@ -140,6 +169,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
+    target_lang = context.user_data.get('target_lang', 'km')
     file_obj = None
 
     if message.video:
@@ -170,8 +200,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await file_obj.download_to_drive(input_path)
 
-        # បញ្ជូនការងារធ្ងន់ៗទៅកាន់ Thread ផ្សេងដើម្បីកុំឱ្យគាំង Telegram Bot
-        result = await asyncio.to_thread(process_audio_sync, input_path, update.update_id)
+        result = await asyncio.to_thread(process_audio_sync, input_path, update.update_id, target_lang)
         
         if result[0] is None:
             await processing_msg.edit_text(result[1])
@@ -196,15 +225,15 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
     
-    # បន្ថែមប៊ូតុង /start
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("lang", lang_command))
+    application.add_handler(CallbackQueryHandler(button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(MessageHandler(filters.VIDEO | filters.AUDIO | filters.VOICE | filters.Document.ALL, handle_media))
     
     port = int(os.environ.get("PORT", 10000))
     
     if RENDER_URL:
-        # ដំណើរការតាម Webhook (នៅលើ Render)
         print(f"🤖 Telegram Bot ដំណើរការតាមរយៈ Webhook នៅលើ URL: {RENDER_URL}")
         application.run_webhook(
             listen="0.0.0.0",
@@ -213,7 +242,6 @@ def main():
             webhook_url=f"{RENDER_URL}/{TOKEN}"
         )
     else:
-        # ដំណើរការធម្មតា (នៅលើកុំព្យូទ័រផ្ទាល់ខ្លួន)
         print("🤖 Telegram Bot ដំណើរការតាមរយៈ Polling...")
         application.run_polling()
 
