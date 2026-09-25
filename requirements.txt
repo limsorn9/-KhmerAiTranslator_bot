@@ -1,5 +1,5 @@
 python-telegram-bot[webhooks]
 SpeechRecognition
-deep-translator
+googletrans==4.0.0-rc1
 pydub
 gTTS

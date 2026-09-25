@@ -4,7 +4,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 import speech_recognition as sr
-from deep_translator import GoogleTranslator
+from googletrans import Translator
 from pydub import AudioSegment
 from gtts import gTTS
 
@@ -76,11 +76,12 @@ def process_audio_sync(input_path, update_id):
         if not original_text.strip():
             return None, "❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬជាភាសាផ្សេង។"
 
-        translator = GoogleTranslator(source='auto', target=TARGET_LANGUAGE)
+        translator = Translator()
         text_chunks = [original_text[i:i+4000] for i in range(0, len(original_text), 4000)]
         translated_text = ""
         for t_chunk in text_chunks:
-            translated_text += translator.translate(t_chunk) + " "
+            translated = translator.translate(t_chunk, dest=TARGET_LANGUAGE)
+            translated_text += translated.text + " "
 
         return original_text, translated_text
     except Exception as e:
@@ -91,8 +92,9 @@ def process_text_sync(text, update_id):
     បកប្រែអក្សរ និងបម្លែងអក្សរទៅជាសំឡេង (TTS)
     """
     try:
-        translator = GoogleTranslator(source='auto', target=TARGET_LANGUAGE)
-        translated_text = translator.translate(text)
+        translator = Translator()
+        translated = translator.translate(text, dest=TARGET_LANGUAGE)
+        translated_text = translated.text
         
         # បម្លែងអក្សរខ្មែរទៅជាសំឡេង
         tts = gTTS(text=translated_text, lang='km')
