@@ -4,7 +4,7 @@ import asyncio
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 import speech_recognition as sr
-from googletrans import Translator
+import requests
 from pydub import AudioSegment
 import edge_tts
 
@@ -76,12 +76,10 @@ def process_audio_sync(input_path, update_id):
         if not original_text.strip():
             return None, "❌ សុំទោស ខ្ញុំស្ដាប់សំឡេងនេះមិនយល់ទេ។ អាចមកពីសំឡេងមិនច្បាស់ គ្មានអ្នកនិយាយ ឬជាភាសាផ្សេង។"
 
-        translator = Translator()
         text_chunks = [original_text[i:i+4000] for i in range(0, len(original_text), 4000)]
         translated_text = ""
         for t_chunk in text_chunks:
-            translated = translator.translate(t_chunk, dest=TARGET_LANGUAGE)
-            translated_text += translated.text + " "
+            translated_text += translate_text_sync(t_chunk) + " "
 
         return original_text, translated_text
     except Exception as e:
@@ -89,11 +87,25 @@ def process_audio_sync(input_path, update_id):
 
 def translate_text_sync(text):
     """
-    បកប្រែអក្សរនៅក្នុង Thread ផ្សេងកុំឱ្យគាំង
+    បកប្រែអក្សរដោយប្រើប្រាស់ Google Translate API ផ្ទាល់ (ឥតគិតថ្លៃ និងមិនគាំង)
     """
-    translator = Translator()
-    translated = translator.translate(text, dest=TARGET_LANGUAGE)
-    return translated.text
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": "auto",
+            "tl": TARGET_LANGUAGE,
+            "dt": "t",
+            "q": text
+        }
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        result = response.json()
+        translated = "".join([sentence[0] for sentence in result[0]])
+        return translated
+    except Exception as e:
+        logging.error(f"Translation error: {e}")
+        return text
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
