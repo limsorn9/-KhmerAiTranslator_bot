@@ -189,14 +189,23 @@ async def add_coin(update, context):
         await update.message.reply_text("❌ អ្នកគ្មានសិទ្ធិប្រើប្រាស់បញ្ជានេះទេ!")
         return
         
-    try:
-        target_id = context.args[0]
-        amount = int(context.args[1])
-        db.add_paid_coins(target_id, amount)
-        await update.message.reply_text(f"✅ បានបញ្ចូល {amount} កាក់មាសទៅឱ្យ ID {target_id} ជោគជ័យ!")
-        await context.bot.send_message(chat_id=target_id, text=f"🎉 **អបអរសាទរ!**\nអ្នកទទួលបាន {amount} កាក់មាសពី Admin! ឆែកកាក់ដោយវាយ /mycoin", parse_mode="Markdown")
-    except Exception as e:
-        await update.message.reply_text("❌ របៀបប្រើ: /addcoin <IDភ្ញៀវ> <ចំនួនកាក់>")
+    if len(context.args) >= 2:
+        try:
+            target_id = context.args[0]
+            amount = int(context.args[1])
+            db.add_paid_coins(target_id, amount)
+            await update.message.reply_text(f"✅ បានបញ្ចូល {amount} កាក់មាសទៅឱ្យ ID {target_id} ជោគជ័យ!")
+            await context.bot.send_message(chat_id=target_id, text=f"🎉 **អបអរសាទរ!**\nអ្នកទទួលបាន {amount} កាក់មាសពី Admin! ឆែកកាក់ដោយវាយ /mycoin", parse_mode="Markdown")
+        except Exception as e:
+            await update.message.reply_text("❌ របៀបប្រើ: /addcoin <IDភ្ញៀវ> <ចំនួនកាក់>")
+    else:
+        # បើអត់មានវាយភ្ជាប់គ្នាទេ ឱ្យវាយជាសារតាមក្រោយ
+        context.user_data['awaiting_addcoin'] = True
+        await update.message.reply_text(
+            "✍️ សូមវាយ **លេខIDភ្ញៀវ** និង **ចំនួនកាក់** រួចផ្ញើមកខ្ញុំឥឡូវនេះ។\n"
+            "ឧទាហរណ៍៖ `123456789 10` (ដកឃ្លាចំកណ្ដាល)", 
+            parse_mode="Markdown"
+        )
 
 async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -207,6 +216,22 @@ async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🆔 ID របស់ {chat_type} នេះគឺ៖ `{chat_id}`", parse_mode="Markdown")
 
 async def prompt_language_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ចាប់យកសារដែល Admin វាយបញ្ចូលកាក់
+    if context.user_data.get('awaiting_addcoin'):
+        text = update.message.text
+        try:
+            parts = text.split()
+            target_id = parts[0]
+            amount = int(parts[1])
+            db.add_paid_coins(target_id, amount)
+            await update.message.reply_text(f"✅ បានបញ្ចូល {amount} កាក់មាសទៅឱ្យ ID {target_id} ជោគជ័យ!")
+            await context.bot.send_message(chat_id=target_id, text=f"🎉 **អបអរសាទរ!**\nអ្នកទទួលបាន {amount} កាក់មាសពី Admin! ឆែកកាក់ដោយវាយ /mycoin", parse_mode="Markdown")
+        except Exception:
+            await update.message.reply_text("❌ ទម្រង់មិនត្រឹមត្រូវទេ។ សូមវាយបញ្ជា /addcoin ម្ដងទៀត។")
+        finally:
+            context.user_data['awaiting_addcoin'] = False
+        return
+
     # បើកុំឱ្យឆែកសមាជិកពេលនៅក្នុងក្រុម (Group Chat) ព្រោះ Bot អាចនឹងឆ្លើយតបគ្រប់សារ
     if update.message.chat.type != 'private':
         return
