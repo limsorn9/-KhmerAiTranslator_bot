@@ -31,7 +31,7 @@ GROUP_INVITE_LINK = "https://t.me/ssonlinechanel"
 # បង្កើត Client សម្រាប់ Groq
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# ភាសាអាស៊ានទាំង ១១ បូកបន្ថែម ចិន និង អង់គ្លេស
+# ភាសាអាស៊ានទាំង ១១ បូកបន្ថែម ចិន អង់គ្លេស និងភាសាពេញនិយម ១០ ទៀត
 LANG_INFO = {
     'km': {'name': '🇰🇭 ខ្មែរ', 'voice': 'km-KH-SreymomNeural'},
     'th': {'name': '🇹🇭 ថៃ', 'voice': 'th-TH-PremwadeeNeural'},
@@ -45,7 +45,17 @@ LANG_INFO = {
     'ta': {'name': '🇸🇬 សិង្ហបុរី', 'voice': 'ta-SG-VenbaNeural', 'google_lang': 'ta'},
     'pt': {'name': '🇹🇱 ទីម័រខាងកើត', 'voice': 'pt-PT-RaquelNeural'},
     'zh-CN': {'name': '🇨🇳 ចិន', 'voice': 'zh-CN-XiaoxiaoNeural'},
-    'en': {'name': '🇬🇧 អង់គ្លេស', 'voice': 'en-US-AriaNeural'}
+    'en': {'name': '🇬🇧 អង់គ្លេស', 'voice': 'en-US-AriaNeural'},
+    'ja': {'name': '🇯🇵 ជប៉ុន', 'voice': 'ja-JP-NanamiNeural'},
+    'fr': {'name': '🇫🇷 បារាំង', 'voice': 'fr-FR-DeniseNeural'},
+    'ko': {'name': '🇰🇷 កូរ៉េ', 'voice': 'ko-KR-SunHiNeural'},
+    'es': {'name': '🇪🇸 អេស្ប៉ាញ', 'voice': 'es-ES-ElviraNeural'},
+    'de': {'name': '🇩🇪 អាល្លឺម៉ង់', 'voice': 'de-DE-KatjaNeural'},
+    'ru': {'name': '🇷🇺 រុស្ស៊ី', 'voice': 'ru-RU-SvetlanaNeural'},
+    'ar': {'name': '🇸🇦 អារ៉ាប់', 'voice': 'ar-SA-ZariyahNeural'},
+    'hi': {'name': '🇮🇳 ឥណ្ឌា', 'voice': 'hi-IN-SwaraNeural'},
+    'it': {'name': '🇮🇹 អ៊ីតាលី', 'voice': 'it-IT-ElsaNeural'},
+    'tr': {'name': '🇹🇷 ទួរគី', 'voice': 'tr-TR-EmelNeural'}
 }
 
 def build_language_keyboard(prefix="translate"):
