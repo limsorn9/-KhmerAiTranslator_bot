@@ -29,57 +29,75 @@ def extract_text(file_path):
             with open(file_path, 'r', encoding='utf-8') as f:
                 text = f.read()
         elif ext in ['.png', '.jpg', '.jpeg', '.webp']:
-            # សាកល្បងប្រើ Groq Vision API ដើម្បីអានអក្សរពីរូបភាពព្រោះវាច្បាស់ជាង
+            # 1. សាកល្បងប្រើ Google Gemini ព្រោះវាឥតគិតថ្លៃ និងពូកែអានអក្សរខ្មែរជាងគេ
             try:
-                import base64
-                from groq import Groq
-                GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-                if GROQ_API_KEY:
-                    client = Groq(api_key=GROQ_API_KEY)
-                    with open(file_path, "rb") as image_file:
-                        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+                if GEMINI_API_KEY:
+                    import google.generativeai as genai
+                    genai.configure(api_key=GEMINI_API_KEY)
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     
-                    models_to_try = [
-                        "llama-3.2-90b-vision-preview",
-                    ]
-                    
-                    # ស្វែងរកឈ្មោះម៉ូដែល Vision ដែលកំពុងបើកឱ្យប្រើដោយស្វ័យប្រវត្តិ
-                    try:
-                        all_models = client.models.list().data
-                        vision_models = [m.id for m in all_models if "vision" in m.id.lower() or "vl" in m.id.lower() or "qwen" in m.id.lower()]
-                        if vision_models:
-                            models_to_try = vision_models
-                    except Exception:
-                        pass
+                    img = Image.open(file_path)
+                    response = model.generate_content([
+                        "Extract all the text from this image. Output only the extracted text exactly as it appears. Do not add any explanation.",
+                        img
+                    ])
+                    text = response.text.strip()
+            except Exception as gemini_e:
+                logging.warning(f"Gemini Vision failed: {gemini_e}")
+
+            # 2. បើ Gemini បរាជ័យ (ឬគ្មាន Key) សាកល្បងប្រើ Groq Vision API
+            if not text:
+                try:
+                    import base64
+                    from groq import Groq
+                    GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+                    if GROQ_API_KEY:
+                        client = Groq(api_key=GROQ_API_KEY)
+                        with open(file_path, "rb") as image_file:
+                            encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                         
-                    for model_name in models_to_try:
+                        models_to_try = [
+                            "llama-3.2-90b-vision-preview",
+                        ]
+                        
+                        # ស្វែងរកឈ្មោះម៉ូដែល Vision ដែលកំពុងបើកឱ្យប្រើដោយស្វ័យប្រវត្តិ
                         try:
-                            response = client.chat.completions.create(
-                                messages=[
-                                    {
-                                        "role": "user",
-                                        "content": [
-                                            {"type": "text", "text": "Extract all the text from this image. Output only the extracted text exactly as it appears. Do not add any explanation or conversational text."},
-                                            {
-                                                "type": "image_url",
-                                                "image_url": {
-                                                    "url": f"data:image/jpeg;base64,{encoded_string}",
+                            all_models = client.models.list().data
+                            vision_models = [m.id for m in all_models if "vision" in m.id.lower() or "vl" in m.id.lower() or "qwen" in m.id.lower()]
+                            if vision_models:
+                                models_to_try = vision_models
+                        except Exception:
+                            pass
+                            
+                        for model_name in models_to_try:
+                            try:
+                                response = client.chat.completions.create(
+                                    messages=[
+                                        {
+                                            "role": "user",
+                                            "content": [
+                                                {"type": "text", "text": "Extract all the text from this image. Output only the extracted text exactly as it appears. Do not add any explanation or conversational text."},
+                                                {
+                                                    "type": "image_url",
+                                                    "image_url": {
+                                                        "url": f"data:image/jpeg;base64,{encoded_string}",
+                                                    },
                                                 },
-                                            },
-                                        ],
-                                    }
-                                ],
-                                model=model_name,
-                            )
-                            text = response.choices[0].message.content.strip()
-                            if text:
-                                break
-                        except Exception as loop_e:
-                            logging.warning(f"Failed with {model_name}: {loop_e}")
-                            vision_error = str(loop_e)
-            except Exception as vision_e:
-                vision_error = str(vision_e)
-                logging.warning(f"Groq Vision failed, falling back to Tesseract: {vision_e}")
+                                            ],
+                                        }
+                                    ],
+                                    model=model_name,
+                                )
+                                text = response.choices[0].message.content.strip()
+                                if text:
+                                    break
+                            except Exception as loop_e:
+                                logging.warning(f"Failed with {model_name}: {loop_e}")
+                                vision_error = str(loop_e)
+                except Exception as vision_e:
+                    vision_error = str(vision_e)
+                    logging.warning(f"Groq Vision failed, falling back to Tesseract: {vision_e}")
                 
             # បើ Groq បរាជ័យ ឬអត់បាន text ទើបប្រើ Tesseract
             if not text:

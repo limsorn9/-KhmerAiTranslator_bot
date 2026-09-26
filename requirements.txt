@@ -11,3 +11,4 @@ openpyxl
 pytz
 SpeechRecognition
 pydub
+google-generativeai
