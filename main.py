@@ -202,18 +202,16 @@ def translate_to_multi(text: str):
     return res_str.strip(), translations
 
 # ----------------- AUDIO PROCESSING -----------------
-async def process_audio_smart(file_path: str):
+async def transcribe_audio_file(file_path: str) -> str:
     """
     Groq Whisper listens to ALL languages.
-    If Khmer detected -> Gemini transcribes (Gemini's ONLY role).
-    Else -> Groq transcribes directly.
-    Then Google Translate to all languages.
+    If Khmer detected -> Gemini transcribes. Returns raw text.
     """
     for _ in range(3):
         try:
             api_key = get_next_groq_key()
             if not api_key:
-                return "\u274c \u1782\u17d2\u1798\u17b6\u1793 GROQ_API_KEY!", {}
+                return MSG_NO_GROQ_KEY
             groq_client = Groq(api_key=api_key)
             with open(file_path, "rb") as f:
                 transcription = groq_client.audio.transcriptions.create(
@@ -224,16 +222,14 @@ async def process_audio_smart(file_path: str):
             lang = getattr(transcription, 'language', 'en')
             if lang in ['km', 'khmer']:
                 khmer_text = await process_with_gemini_media(file_path, is_voice=True)
-                if khmer_text.startswith("\u274c") or khmer_text.startswith("\u26a0"):
-                    return khmer_text, {}
-                return translate_to_multi(khmer_text)
+                return khmer_text
             else:
-                return translate_to_multi(transcription.text)
+                return transcription.text
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
                 continue
-            return f"\u274c \u1794\u179a\u17b6\u1787\u17d0\u1799 Groq: {str(e)}", {}
-    return "\u26a0\ufe0f Groq \u17a2\u179f\u17cb Quota! \u179f\u17bc\u1798\u179a\u1784\u17cb\u1785\u17b6\u17c6 \u17e1 \u1793\u17b6\u1791\u17b8\u17d4", {}
+            return f"❌ បរាជ័យ Groq: {str(e)}"
+    return MSG_GROQ_QUOTA
 
 # ----------------- IMAGE PROCESSING -----------------
 def extract_image_text_local(file_path: str) -> str:
@@ -560,43 +556,48 @@ async def handle_update(update: Update):
                     print(f"FFmpeg Error: {e}")
                     final_file = file_to_delete
 
-            translations_dict = {}
             if is_audio:
-                res, translations_dict = await process_audio_smart(final_file)
-            else:
-                img_res = await process_with_gemini_media(final_file, is_voice=False)
-                if img_res.startswith("\u274c") or img_res.startswith("\u26a0"):
-                    res = img_res
+                if cost > 1:
+                    import glob
+                    subprocess.run(["ffmpeg", "-i", final_file, "-f", "segment", "-segment_time", "300", "-c:a", "libmp3lame", "-q:a", "5", f"/tmp/chunk_{msg.message_id}_%03d.mp3", "-y"], check=True, capture_output=True)
+                    chunk_files = sorted(glob.glob(f"/tmp/chunk_{msg.message_id}_*.mp3"))
+                    full_text = ""
+                    for chunk in chunk_files:
+                        chunk_text = await transcribe_audio_file(chunk)
+                        if chunk_text.startswith("❌") or chunk_text.startswith("⚠️"):
+                            extracted_text = chunk_text
+                            break
+                        full_text += chunk_text + " "
+                    if not extracted_text:
+                        extracted_text = full_text.strip()
+                    for chunk in chunk_files:
+                        try: os.remove(chunk)
+                        except: pass
                 else:
-                    res, translations_dict = translate_to_multi(img_res)
-
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=status_msg.message_id,
-                text=f"\u2705 \u179b\u1791\u17d2\u1792\u1795\u179b\u17d6\n\n{res}"
-            )
-
-            if translations_dict and not res.startswith("\u274c") and not res.startswith("\u26a0"):
-                await send_tts(translations_dict, chat_id, status_msg.message_id)
+                    extracted_text = await transcribe_audio_file(final_file)
+            else:
+                local_text = extract_image_text_local(final_file)
+                if local_text and len(local_text) > 5:
+                    extracted_text = local_text
+                else:
+                    extracted_text = await process_with_gemini_media(final_file, is_voice=False)
 
             if final_file != file_to_delete and os.path.exists(final_file):
-                try:
-                    os.remove(final_file)
-                except Exception:
-                    pass
-
+                try: os.remove(final_file)
+                except Exception: pass
         else:
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=status_msg.message_id,
-                text="\u274c \u178f\u1798\u17d2\u179a\u1784\u17a1\u1780\u179f\u17b6\u179a\u1793\u17c1\u17a0\u1798\u17b7\u1793\u178f\u17d2\u179a\u17bc\u179c\u1794\u17b6\u1793\u1782\u17b6\u17c6\u178f\u17d2\u179a\u178f\u17c2!"
-            )
+            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=MSG_FORMAT_UNSUPPORTED)
             return
 
-        # D. TEXT / DOCUMENT -> show language selector
+        # SHOW LANGUAGE SELECTOR
         if extracted_text:
-            await bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
-            await show_language_selector(chat_id, msg.message_id, extracted_text, user_id)
+            if extracted_text.startswith("❌") or extracted_text.startswith("⚠️"):
+                await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=extracted_text)
+            else:
+                await bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
+                await show_language_selector(chat_id, msg.message_id, extracted_text, user_id)
+        else:
+            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=MSG_IMAGE_NO_TEXT)
 
     except Exception as e:
         await bot.edit_message_text(
