@@ -239,9 +239,12 @@ async def transcribe_audio_file(file_path: str) -> str:
     1. Gemini listens first. If Khmer -> transcribes.
     2. If NOT_KHMER -> Groq Whisper transcribes.
     """
+    import re
     gemini_res = await process_with_gemini_media(file_path, is_voice=True)
-    if gemini_res and "NOT_KHMER" not in gemini_res and not gemini_res.startswith("❌") and not gemini_res.startswith("⚠️"):
-        return gemini_res
+    if gemini_res and not gemini_res.startswith("❌") and not gemini_res.startswith("⚠️"):
+        # If Gemini transcribed it and used Khmer characters, it is Khmer!
+        if re.search(r'[ក-៿]', gemini_res):
+            return gemini_res
 
     for _ in range(3):
         try:
@@ -277,10 +280,8 @@ def extract_image_text_local(file_path: str) -> str:
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
     if is_voice:
         prompt = (
-            "Listen to this audio carefully. If the spoken language is Khmer (Cambodian), "
-            "transcribe it into Khmer text exactly as spoken. "
-            "If the spoken language is NOT Khmer (e.g., English, Thai, Vietnamese, etc.), "
-            "you MUST output exactly the word 'NOT_KHMER' and nothing else."
+            "Transcribe the speech in this audio exactly as spoken in its original language. "
+            "Do not translate. If it is Khmer, use Khmer script. If it is English, use English script, etc."
         )
     else:
         local_text = extract_image_text_local(file_path)
