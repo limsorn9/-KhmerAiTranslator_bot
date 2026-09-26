@@ -2,6 +2,7 @@ import os
 import re
 import json
 import asyncio
+import time
 import edge_tts
 import pytesseract
 from PIL import Image
@@ -35,8 +36,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-
-
 # Firebase Init
 if not firebase_admin._apps:
     creds_json_str = os.environ.get("FIREBASE_CREDENTIALS")
@@ -48,26 +47,22 @@ if not firebase_admin._apps:
             firebase_admin.initialize_app(cred, {
                 'databaseURL': firebase_db_url
             })
-            print("✅ Firebase initialized successfully.")
+            print("Firebase initialized successfully.")
         except Exception as e:
-            print(f"❌ Failed to parse FIREBASE_CREDENTIALS: {e}")
+            print(f"Failed to parse FIREBASE_CREDENTIALS: {e}")
     else:
-        print("⚠️ FIREBASE_CREDENTIALS is missing! DB tracking will fail.")
+        print("FIREBASE_CREDENTIALS is missing! DB tracking will fail.")
 
 rtdb_ref = rtdb.reference('users') if firebase_admin._apps else None
 
 DAILY_LIMIT = 10
 GEMINI_MODELS = [
-    "gemini-3.8-flash",     # newest - fastest
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-3.1-pro-preview",  # smartest pro
-    "gemini-2.5-flash",     # stable fallback
-    "gemini-2.0-flash",     # last resort
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
 ]
 
-# Super Admin IDs - no quota limit (get your ID from @userinfobot on Telegram)
+# Super Admin IDs - no quota limit
 SUPER_ADMINS = set(
     int(x.strip()) for x in os.environ.get("SUPER_ADMIN_IDS", "").split(",") if x.strip().isdigit()
 )
@@ -97,15 +92,13 @@ def get_next_groq_key():
     groq_idx += 1
     return key
 
-# ----------------- DB LOGIC (REALTIME DATABASE) -----------------
+# ----------------- DB LOGIC -----------------
 def check_and_update_limit(user_id: int) -> bool:
     if not rtdb_ref:
-        return True # Fail-open if no DB configured
-        
+        return True
     tz = pytz.timezone('Asia/Phnom_Penh')
     today_str = datetime.now(tz).strftime('%Y-%m-%d')
     user_node = rtdb_ref.child(str(user_id))
-    
     data = user_node.get()
     if data:
         if data.get('last_reset_date') == today_str:
@@ -119,51 +112,56 @@ def check_and_update_limit(user_id: int) -> bool:
             return True
     else:
         user_node.set({
-            'daily_count': 1, 
+            'daily_count': 1,
             'last_reset_date': today_str,
             'created_at': datetime.now(tz).isoformat()
         })
         return True
 
-# Store text pending language selection
+# ----------------- PENDING TEXT STORE -----------------
 PENDING_TRANSLATIONS = {}
 
-# ----------------- LLM ROUTING -----------------
+# ----------------- LANGUAGE CONFIG -----------------
+LANG_CONFIG = {
+    'km':    ('\U0001f1f0\U0001f1ed \u1781\u17d2\u1798\u17c2\u179a',       'km-KH-SreymomNeural'),
+    'en':    ('\U0001f1ec\U0001f1e7 \u17a2\u1784\u17cb\u1782\u17d2\u179b\u17c1\u179f', 'en-US-AriaNeural'),
+    'th':    ('\U0001f1f9\U0001f1ed \u1790\u17c3',                           'th-TH-PremwadeeNeural'),
+    'vi':    ('\U0001f1fb\U0001f1f3 \u179c\u17c0\u178f\u178e\u17b6\u1798',  'vi-VN-HoaiMyNeural'),
+    'zh-CN': ('\U0001f1e8\U0001f1f3 \u1785\u17b7\u1793',                    'zh-CN-XiaoxiaoNeural'),
+    'ja':    ('\U0001f1ef\U0001f1f5 \u1787\u1794\u17bb\u17c9\u1793',        'ja-JP-NanamiNeural'),
+    'ko':    ('\U0001f1f0\U0001f1f7 \u1780\u17bc\u179a\u17c9\u17c1',        'ko-KR-SunHiNeural'),
+    'id':    ('\U0001f1ee\U0001f1e9 \u17a2\u17b7\u1793\u178c\u17bc\u1793\u17b9\u179f\u17b8', 'id-ID-GadisNeural'),
+    'ms':    ('\U0001f1f2\U0001f1fe \u1798\u17d0\u17a2\u17b6\u179b\u17c1',  'ms-MY-YasminNeural'),
+}
 
+# ----------------- TTS -----------------
 async def send_tts(translations: dict, chat_id: int, reply_to_message_id: int):
-    """Edge-TTS: Send ONE voice per language as separate Telegram voice messages"""
+    """Edge-TTS: send one voice message per language."""
     for voice, text in translations.items():
-        if not text: continue
-        part_file = f"/tmp/tts_{chat_id}_{voice[:5]}.mp3"
+        if not text:
+            continue
+        part_file = f"/tmp/tts_{chat_id}_{voice[:8]}.mp3"
         try:
             communicate = edge_tts.Communicate(text, voice)
             await communicate.save(part_file)
             with open(part_file, 'rb') as f:
-                await bot.send_voice(chat_id=chat_id, voice=f, reply_to_message_id=reply_to_message_id)
+                await bot.send_voice(chat_id=chat_id, voice=f,
+                                     reply_to_message_id=reply_to_message_id)
         except Exception as e:
             print(f"TTS Error ({voice}): {e}")
         finally:
             if os.path.exists(part_file):
-                try: os.remove(part_file)
-                except: pass
+                try:
+                    os.remove(part_file)
+                except Exception:
+                    pass
 
+# ----------------- HELPERS -----------------
 def is_khmer_text(text: str) -> bool:
     return bool(re.search(r'[\u1780-\u17FF]', text))
 
-LANG_CONFIG = {
-    'km': ('🇰🇭 ខ្មែរ', 'km-KH-SreymomNeural'),
-    'en': ('🇬🇧 អង់គ្លេស', 'en-US-AriaNeural'),
-    'th': ('🇹🇭 ថៃ', 'th-TH-PremwadeeNeural'),
-    'vi': ('🇻🇳 វៀតណាម', 'vi-VN-HoaiMyNeural'),
-    'zh-CN': ('🇨🇳 ចិន', 'zh-CN-XiaoxiaoNeural'),
-    'ja': ('🇯🇵 ជបុ៉ន', 'ja-JP-NanamiNeural'),
-    'ko': ('🇰🇷 កូរ៉េ', 'ko-KR-SunHiNeural'),
-    'id': ('🇮🇩 ឥណ្ឌូណេស៊ី', 'id-ID-GadisNeural'),
-    'ms': ('🇲🇾 ម៉ាឡេស៊ី', 'ms-MY-YasminNeural'),
-}
-
-def translate_one(text: str, lang_code: str) -> str:
-    """Translate text to one language with retry"""
+def translate_one(text: str, lang_code: str):
+    """Translate with up to 3 retries."""
     for attempt in range(3):
         try:
             result = GoogleTranslator(source='auto', target=lang_code).translate(text)
@@ -171,11 +169,11 @@ def translate_one(text: str, lang_code: str) -> str:
                 return result.strip()
         except Exception as e:
             print(f"GoogleTranslate attempt {attempt+1} failed for {lang_code}: {e}")
-            import time
             time.sleep(0.5)
     return None
 
 def translate_to_multi(text: str):
+    """Translate text into all configured languages."""
     res_str = ""
     translations = {}
     for code, (name, voice) in LANG_CONFIG.items():
@@ -184,26 +182,22 @@ def translate_to_multi(text: str):
             res_str += f"{name}:\n{trans}\n\n"
             translations[voice] = trans
         else:
-            res_str += f"{name}:\n❌ បរាជ័យ។\n\n"
+            res_str += f"{name}:\n\u274c \u1794\u179a\u17b6\u1787\u17d0\u1799\u17d4\n\n"
     return res_str.strip(), translations
 
-
-
-
+# ----------------- AUDIO PROCESSING -----------------
 async def process_audio_smart(file_path: str):
     """
-    ROUTING RULES:
-    - Groq (Whisper): listens to ALL languages. 
-    - If detected Khmer → Groq hands off to Gemini to transcribe (Gemini ONLY role).
-    - If detected non-Khmer → Groq transcribes directly.
-    - Google Translate: translates the final text to ALL 7 languages.
-    - Returns (display_text, translations_dict) for Edge-TTS.
+    Groq Whisper listens to ALL languages.
+    If Khmer detected -> Gemini transcribes (Gemini's ONLY role).
+    Else -> Groq transcribes directly.
+    Then Google Translate to all languages.
     """
     for _ in range(3):
         try:
             api_key = get_next_groq_key()
             if not api_key:
-                return "❌ គ្មាន GROQ_API_KEY!", {}
+                return "\u274c \u1782\u17d2\u1798\u17b6\u1793 GROQ_API_KEY!", {}
             groq_client = Groq(api_key=api_key)
             with open(file_path, "rb") as f:
                 transcription = groq_client.audio.transcriptions.create(
@@ -211,50 +205,48 @@ async def process_audio_smart(file_path: str):
                     model="whisper-large-v3-turbo",
                     response_format="verbose_json"
                 )
-            
             lang = getattr(transcription, 'language', 'en')
-            
             if lang in ['km', 'khmer']:
-                # Groq detected Khmer → pass to Gemini (Gemini's only role)
                 khmer_text = await process_with_gemini_media(file_path, is_voice=True)
-                if khmer_text.startswith("❌") or khmer_text.startswith("⚠"):
+                if khmer_text.startswith("\u274c") or khmer_text.startswith("\u26a0"):
                     return khmer_text, {}
-                # Google Translate: translate Khmer → all 7 langs
                 return translate_to_multi(khmer_text)
             else:
-                # Groq listens non-Khmer, produces text directly
-                detected_text = transcription.text
-                # Google Translate: translate to all 7 langs
-                return translate_to_multi(detected_text)
-                
+                return translate_to_multi(transcription.text)
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
                 continue
-            return f"❌ បរាជ័យ Groq Audio: {str(e)}", {}
-    return "⚠️ Groq Audio អស់ Quota! សូមរង់ចាំ ១ នាទី។", {}
+            return f"\u274c \u1794\u179a\u17b6\u1787\u17d0\u1799 Groq: {str(e)}", {}
+    return "\u26a0\ufe0f Groq \u17a2\u179f\u17cb Quota! \u179f\u17bc\u1798\u179a\u1784\u17cb\u1785\u17b6\u17c6 \u17e1 \u1793\u17b6\u1791\u17b8\u17d4", {}
 
+# ----------------- IMAGE PROCESSING -----------------
 def extract_image_text_local(file_path: str) -> str:
-    """Tesseract OCR: fast local image-to-text, supports Khmer+English+All"""
+    """Tesseract OCR: fast local extraction (Khmer + English)."""
     try:
         img = Image.open(file_path)
-        # Try Khmer+English first (common case), then all langs
         text = pytesseract.image_to_string(img, lang='khm+eng').strip()
         if not text:
             text = pytesseract.image_to_string(img).strip()
         return text
-    except Exception as e:
+    except Exception:
         return ""
 
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
     if is_voice:
-        prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary."
+        prompt = (
+            "Listen to this audio carefully and transcribe all the speech you hear into text. "
+            "If it is in Khmer, write it in Khmer script. "
+            "Output ONLY the transcribed text exactly as spoken, with no additional commentary."
+        )
     else:
-        # IMAGE: Try Tesseract first (fast, local, no API)
         local_text = extract_image_text_local(file_path)
         if local_text and len(local_text.strip()) > 3:
-            return local_text  # Return fast Tesseract result!
-        # Tesseract got nothing useful → fallback to Gemini
-        prompt = "Please extract all text visible in this image. Output ONLY the text exactly as seen. If there is no clear text, output exactly: NO_TEXT"
+            return local_text
+        prompt = (
+            "Please extract all text visible in this image. "
+            "Output ONLY the text exactly as seen. "
+            "If there is no clear text, output exactly: NO_TEXT"
+        )
 
     for model_name in GEMINI_MODELS:
         uploaded_file = None
@@ -262,7 +254,7 @@ async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> s
         try:
             api_key = get_next_gemini_key()
             if not api_key:
-                return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
+                return "\u274c \u1782\u17d2\u1798\u17b6\u1793 GEMINI_API_KEY!"
             client = google_genai.Client(api_key=api_key)
             uploaded_file = client.files.upload(file=file_path)
             response = client.models.generate_content(
@@ -271,42 +263,47 @@ async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> s
             )
             result = response.text.strip()
             if result == "NO_TEXT" or not result:
-                return "⚠️ រូបភាពមិនច្បាស់ ឬ មិនមានអក្សរ! សូមផ្ញើរូបភាពថ្មី។"
+                return "\u26a0\ufe0f \u179a\u17bc\u1794\u1797\u17b6\u1796\u1798\u17b7\u1793\u1785\u17d2\u1794\u17b6\u179f\u17cb \u1798\u17b7\u1793\u1798\u17b6\u1793\u17a2\u1780\u17d2\u179f\u179a\u178f\u17c2! \u179f\u17bc\u1798\u1795\u17d2\u1789\u17be\u179a\u179f\u17b6\u179a\u1790\u17d2\u1798\u17b8\u17d4"
             return result
         except Exception as e:
             err = str(e)
             if "429" in err or "quota" in err.lower() or "503" in err or "unavailable" in err.lower():
-                continue  # Try next model
-            return f"❌ បរាជ័យក្នុងការវិភាគ File៖ {err}"
+                continue
+            return f"\u274c \u1782\u17d2\u1798\u17b6\u1793\u17a1\u1797\u17b6\u1796 Gemini: {err}"
         finally:
             if uploaded_file and client:
                 try:
                     client.files.delete(name=uploaded_file.name)
-                except:
+                except Exception:
                     pass
-    return "⚠️ Gemini មមានភាព Overload! សូមរង់ចាំ ១-២ នាទីហើយព្យាយាមម្តងទៀត។"
+    return "\u26a0\ufe0f Gemini \u1798\u17b6\u1793\u1797\u17b6\u1796\u1794\u17d2\u179a\u17be\u1794 Overload! \u179f\u17bc\u1798\u179a\u1784\u17cb\u1785\u17b6\u17c6 \u17e1-\u17e2 \u1793\u17b6\u1791\u17b8\u17d4"
 
-
-async def show_language_selector(chat_id: int, reply_msg_id: int, extracted_text: str, user_id: int):
-    """Show inline keyboard for language selection"""
+# ----------------- LANGUAGE SELECTOR -----------------
+async def show_language_selector(chat_id: int, reply_msg_id: int,
+                                  extracted_text: str, user_id: int):
     PENDING_TRANSLATIONS[user_id] = extracted_text
-    
     buttons = []
     row = []
-    for code, (name, voice) in LANG_CONFIG.items():
+    for code, (name, _voice) in LANG_CONFIG.items():
         row.append(InlineKeyboardButton(name, callback_data=f"translate_{code}"))
         if len(row) == 3:
             buttons.append(row)
             row = []
     if row:
         buttons.append(row)
-    buttons.append([InlineKeyboardButton("🌍 បកប្រែគ្រប់ភាសា", callback_data="translate_all")])
-    
+    buttons.append([InlineKeyboardButton(
+        "\U0001f310 \u1794\u1780\u1794\u17d2\u179a\u17be\u1782\u17d2\u179a\u1794\u17cb\u1797\u17b6\u179f\u17b6",
+        callback_data="translate_all"
+    )])
     keyboard = InlineKeyboardMarkup(buttons)
-    preview = extracted_text[:200] + ("..." if len(extracted_text) > 200 else "")
+    preview = extracted_text[:250] + ("..." if len(extracted_text) > 250 else "")
     await bot.send_message(
         chat_id=chat_id,
-        text=f"📄 អក្សរដែលបានទាញចេញ៖\n\n{preview}\n\n❓ សូមជ្រើសរើសភាសាដែលចង់បកប្រែ ↓",
+        text=(
+            "\U0001f4c4 \u17a2\u1780\u17d2\u179f\u179a\u178f\u17b9\u1780\u1785\u17d2\u1793\u17b6\u1789\u17d6\n\n"
+            f"{preview}\n\n"
+            "\u2753 \u179f\u17bc\u1798\u1787\u17d2\u179a\u17be\u179f\u179a\u17be\u179f\u1797\u17b6\u179f\u17b6\u178f\u17b9\u1780\u1785\u1784\u17cb\u1794\u1780\u1794\u17d2\u179a\u17be \u2193"
+        ),
         reply_to_message_id=reply_msg_id,
         reply_markup=keyboard
     )
@@ -314,27 +311,37 @@ async def show_language_selector(chat_id: int, reply_msg_id: int, extracted_text
 # ----------------- TELEGRAM LOGIC -----------------
 async def handle_update(update: Update):
 
-    # Handle inline keyboard button presses
+    # Handle inline keyboard callbacks
     if update.callback_query:
         query = update.callback_query
         await query.answer()
         user_id = query.from_user.id
         chat_id = query.message.chat_id
         data = query.data
-        
+
         if not data.startswith("translate_"):
             return
-        
+
         text = PENDING_TRANSLATIONS.get(user_id)
         if not text:
-            await query.edit_message_text("⚠️ អត្ថបទផុតអាយុហើយ! សូមផ្ញើសារថ្មីម្តងទៀត។")
+            await query.edit_message_text(
+                "\u26a0\ufe0f \u17a2\u178f\u17d2\u1790\u1794\u178f\u1795\u17bb\u178f\u17a2\u17b6\u1799\u17bb\u17d4 "
+                "\u179f\u17bc\u1798\u1795\u17d2\u1789\u17be\u179a\u179f\u17b6\u179a\u1790\u17d2\u1798\u17b8\u1798\u17d2\u178f\u1784\u178f\u17be\u178f\u17d4"
+            )
             return
-        
-        status = await bot.send_message(chat_id=chat_id, text="⏳ កំពុងបកប្រែ...")
-        
+
+        status = await bot.send_message(
+            chat_id=chat_id,
+            text="\u23f3 \u1780\u17c6\u1796\u17bb\u1784\u1794\u1780\u1794\u17d2\u179a\u17be..."
+        )
+
         if data == "translate_all":
             res_str, translations_dict = translate_to_multi(text)
-            await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"✅ លទ្ធផល៖\n\n{res_str}")
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=status.message_id,
+                text=f"\u2705 \u179b\u1791\u17d2\u1792\u1795\u179b\u17d6\n\n{res_str}"
+            )
             if translations_dict:
                 await send_tts(translations_dict, chat_id, status.message_id)
         else:
@@ -343,41 +350,52 @@ async def handle_update(update: Update):
                 name, voice = LANG_CONFIG[lang_code]
                 trans = translate_one(text, lang_code)
                 if trans:
-                    await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"✅ {name}:\n\n{trans}")
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=status.message_id,
+                        text=f"\u2705 {name}:\n\n{trans}"
+                    )
                     await send_tts({voice: trans}, chat_id, status.message_id)
                 else:
-                    await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"❌ បរាជ័យក្នុងការបកប្រែ {name}! សូមព្យាយាមម្តងទៀត។")
-        
-        # Clean up pending
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=status.message_id,
+                        text=f"\u274c \u1794\u179a\u17b6\u1787\u17d0\u1799\u1794\u1780\u1794\u17d2\u179a\u17be {name}! "
+                             f"\u179f\u17bc\u1798\u1795\u17d2\u179a\u17d0\u1799\u17a2\u17b6\u1793\u1798\u17d2\u178f\u1784\u178f\u17be\u178f\u17d4"
+                    )
+
         PENDING_TRANSLATIONS.pop(user_id, None)
         return
-    
+
     if not update.message:
         return
-        
+
     msg = update.message
     user_id = msg.from_user.id
     chat_id = msg.chat_id
 
-    # 0. HANDLE COMMANDS FIRST (no quota needed)
+    # Handle commands
     if msg.text and msg.text.startswith('/'):
         cmd = msg.text.split()[0].lower()
+
         if cmd == '/start':
             await bot.send_message(
                 chat_id=chat_id,
                 text=(
-                    "👋 សួស្តី! ខ្ញុំជា KhmerAI Translator Bot\n\n"
-                    "📌 ខ្ញុំអាចជួយអ្នកបាន៖\n"
-                    "• ✍️ ផ្ញើអត្ថបទភាសាណាក៏បាន → បកប្រែ ៩ ភាសា\n"
-                    "• 🎤 ផ្ញើសំឡេង (Voice message)\n"
-                    "• 📄 ផ្ញើឯកសារ (.txt, .docx)\n"
-                    "• 🖼️ ផ្ញើរូបភាព\n\n"
-                    "⚡ Free Tier: ១០ ដង/ថ្ងៃ\n"
-                    "📊 ប្រើ /mycoin ដើម្បីមើលចំនួនប្រើប្រាស់\n"
-                    "👉 សូមផ្ញើសារណាមួយដើម្បីចាប់ផ្តើម!"
-                ),
+                    "\U0001f44b \u179f\u17bd\u179f\u17d2\u178f\u17b8! \u1781\u17d2\u1789\u17bb\u1798\u1787\u17b6 KhmerAI Translator Bot\n\n"
+                    "\U0001f4cc \u1781\u17d2\u1789\u17bb\u1798\u17a2\u17b6\u1785\u1787\u17bd\u1799\u17a2\u17d2\u1793\u1780\u1794\u17b6\u1793\u17d6\n"
+                    "\u2022 \u270d\ufe0f \u1795\u17d2\u1789\u17be\u179a\u17a2\u178f\u17d2\u1790\u1794\u178f\u1797\u17b6\u179f\u17b6\u178e\u17b6\u1780\u17cb\u1794\u17b6\u1793 \u2192 \u1794\u1780\u1794\u17d2\u179a\u17be \u17e9 \u1797\u17b6\u179f\u17b6\n"
+                    "\u2022 \U0001f3a4 \u1795\u17d2\u1789\u17be\u179a\u179f\u17c6\u179b\u17be\u1784 (Voice message)\n"
+                    "\u2022 \U0001f4f9 \u1795\u17d2\u1789\u17be\u179a\u179c\u17b8\u178f\u17b9\u17a2\u17bc (Video)\n"
+                    "\u2022 \U0001f4c4 \u1795\u17d2\u1789\u17be\u179a\u17a1\u1780\u179f\u17b6\u179a (.txt, .docx)\n"
+                    "\u2022 \U0001f5bc\ufe0f \u1795\u17d2\u1789\u17be\u179a\u179a\u17bc\u1794\u1797\u17b6\u1796\n\n"
+                    "\u26a1 Free Tier: \u17e1\u17e0 \u178f\u1784/\u1790\u17d2\u1784\u17b9\n"
+                    "\U0001f4ca \u1794\u17d2\u179a\u17be /mycoin \u178f\u17d0\u1789\u1798\u17be\u179b\u1785\u17c6\u1793\u17bd\u1793\u1794\u17d2\u179a\u17be\u1794\u17d2\u179a\u17b6\u179f\u17cb\n"
+                    "\U0001f449 \u179f\u17bc\u1798\u1795\u17d2\u1789\u17be\u179a\u179f\u17b6\u179a\u178e\u17b6\u1798\u17bd\u1799\u178f\u17d0\u1789\u1785\u17b6\u1794\u17cb\u1795\u17d2\u178f\u17be\u1798!"
                 )
+            )
             return
+
         elif cmd == '/mycoin':
             tz = pytz.timezone('Asia/Phnom_Penh')
             today_str = datetime.now(tz).strftime('%Y-%m-%d')
@@ -389,55 +407,71 @@ async def handle_update(update: Update):
             remaining = max(0, DAILY_LIMIT - count)
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"📊 ស្ថានភាពប្រចាំថ្ងៃ\n\n"
-                     f"✅ បានប្រើ: {count}/{DAILY_LIMIT} ដង\n"
-                     f"🔋 នៅសល់: {remaining} ដង\n\n"
-                     f"🔄 កូតានឹង Reset ឡើងវិញនៅថ្ងៃស្អែក។",
+                text=(
+                    "\U0001f4ca \u179f\u17d2\u1790\u17b6\u1793\u1797\u17b6\u1796\u1794\u17d2\u179a\u1785\u17b6\u17c6\u1790\u17d2\u1784\u17b9\n\n"
+                    f"\u2705 \u1794\u17b6\u1793\u1794\u17d2\u179a\u17be: {count}/{DAILY_LIMIT} \u178f\u1784\n"
+                    f"\U0001f50b \u1793\u17c5\u179f\u179b\u17cb: {remaining} \u178f\u1784\n\n"
+                    "\U0001f504 \u1780\u17bc\u178f\u17b6\u1793\u17b9\u1784 Reset \u17a1\u17be\u1784\u179c\u17b7\u1789\u1793\u17c5\u1790\u17d2\u1784\u17b9\u179f\u17d2\u17a2\u17b6\u1780\u17d4"
                 )
+            )
             return
+
         elif cmd == '/topup':
             await bot.send_message(
                 chat_id=chat_id,
-                text="💎 Upgrade to Premium\n\n"
-                     "🆓 Free Tier: ១០ ដង/ថ្ងៃ\n"
-                     "⭐ Premium: សារគ្មានដែន\n\n"
-                     "📩 ទំនាក់ទំនងអ្នកគ្រប់គ្រង: @YourAdminHandle",
+                text=(
+                    "\U0001f48e Upgrade to Premium\n\n"
+                    "\U0001f193 Free Tier: \u17e1\u17e0 \u178f\u1784/\u1790\u17d2\u1784\u17b9\n"
+                    "\u2b50 Premium: \u1798\u17b7\u1793\u1798\u17b6\u1793\u178f\u17d2\u179a\u17bc\u1788\u17d4\n\n"
+                    "\U0001f4e9 \u178f\u17c6\u1793\u17b6\u1780\u17cb\u178f\u17c6\u1793\u1784\u17a2\u17d2\u1793\u1780\u1782\u17d2\u179a\u1794\u17cb\u1782\u17d2\u179a\u1784: @YourAdminHandle"
                 )
-            return
-        else:
-            await bot.send_message(chat_id=chat_id, text="❓ ពាក្យបញ្ជានេះមិនត្រូវបានគាំទ្រទេ។ សូមសាកល្បង /start")
+            )
             return
 
-    # 1. Limit Check (skip for Super Admins)
+        else:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "\u2753 \u1796\u17b6\u1780\u17d2\u1799\u1794\u1789\u17d2\u1787\u17b6\u1793\u17b8\u1798\u17b7\u1793\u178f\u17d2\u179a\u17bc\u179c\u1794\u17b6\u1793\u1782\u17b6\u17c6\u178f\u17d2\u179a\u178f\u17c2\u17d4 "
+                    "\u179f\u17bc\u1798\u179f\u17b6\u1780\u179b\u17d2\u1794\u1784 /start"
+                )
+            )
+            return
+
+    # Quota check (skip for admins)
     is_admin = user_id in SUPER_ADMINS
     if not is_admin and not check_and_update_limit(user_id):
         await bot.send_message(
-            chat_id=chat_id, 
-            text="🚫 អ្នកបានប្រើគ្រប់ ១០ ដងសម្រាប់ថ្ងៃនេះហើយ (Free Tier)!\n\n💡 ប្រើ /topup ដើម្បី Upgrade!",
+            chat_id=chat_id,
+            text=(
+                "\U0001f6ab \u17a2\u17d2\u1793\u1780\u1794\u17b6\u1793\u1794\u17d2\u179a\u17be\u1782\u17d2\u179a\u1794\u17cb \u17e1\u17e0 \u178f\u1784"
+                "\u179f\u1798\u17d2\u179a\u17b6\u1794\u17cb\u1790\u17d2\u1784\u17b9\u1793\u17c1\u17a0\u17be\u1799 (Free Tier)!\n\n"
+                "\U0001f4a1 \u1794\u17d2\u179a\u17be /topup \u178f\u17d0\u1789\u1798\u17be\u179b Upgrade!"
             )
+        )
         return
 
-    status_msg = await bot.send_message(chat_id=chat_id, text="⏳ កំពុងដំណើរការ...")
-    
+    status_msg = await bot.send_message(
+        chat_id=chat_id,
+        text="\u23f3 \u1780\u17c6\u1796\u17bb\u1784\u178f\u17c6\u178e\u17be\u179a\u1780\u17b6\u179a..."
+    )
+
     extracted_text = ""
     file_to_delete = None
-    
+
     try:
-        # A. HANDLE TEXT
+        # A. TEXT
         if msg.text:
             extracted_text = msg.text
-            
-        # B. HANDLE DOCUMENTS (TXT, DOCX)
+
+        # B. DOCUMENTS
         elif msg.document:
             file_name = msg.document.file_name.lower()
             if file_name.endswith('.txt') or file_name.endswith('.docx'):
                 file_obj = await bot.get_file(msg.document.file_id)
                 file_to_delete = f"/tmp/doc_{msg.message_id}_{file_name}"
-                
-                # Create /tmp if not exists (for local testing mostly, Render has /tmp)
                 os.makedirs("/tmp", exist_ok=True)
                 await file_obj.download_to_drive(file_to_delete)
-                
                 if file_name.endswith('.txt'):
                     with open(file_to_delete, 'r', encoding='utf-8') as f:
                         extracted_text = f.read()
@@ -445,10 +479,14 @@ async def handle_update(update: Update):
                     doc = docx.Document(file_to_delete)
                     extracted_text = "\n".join([para.text for para in doc.paragraphs])
             else:
-                await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ ទទួលយកតែ .txt និង .docx ប៉ុណ្ណោះ!")
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=status_msg.message_id,
+                    text="\u274c \u178f\u1785\u1780\u1799\u1780\u178f\u17be \u17e2 \u178f\u17c6\u179a\u1784 .txt \u1793\u17b7\u1784 .docx \u1794\u17d0\u178e\u17d2\u178e\u17c4\u17c7!"
+                )
                 return
-                
-        # C. HANDLE VOICE OR PHOTO
+
+        # C. VOICE / VIDEO / PHOTO
         elif msg.voice or msg.photo or msg.video or msg.video_note:
             if msg.voice:
                 file_id = msg.voice.file_id
@@ -464,58 +502,70 @@ async def handle_update(update: Update):
                 ext = ".jpg"
 
             file_to_delete = f"/tmp/media_{msg.message_id}{ext}"
-            
             os.makedirs("/tmp", exist_ok=True)
             file_obj = await bot.get_file(file_id)
             await file_obj.download_to_drive(file_to_delete)
-            
+
             is_audio = bool(msg.voice or msg.video or msg.video_note)
             final_file = file_to_delete
-            
-            # Extract audio from video to save Gemini upload time/size
+
             if ext == ".mp4":
                 final_file = f"/tmp/audio_{msg.message_id}.wav"
                 try:
-                    subprocess.run(["ffmpeg", "-i", file_to_delete, "-q:a", "0", "-map", "a", final_file, "-y"], check=True)
+                    subprocess.run(
+                        ["ffmpeg", "-i", file_to_delete, "-q:a", "0", "-map", "a", final_file, "-y"],
+                        check=True, capture_output=True
+                    )
                 except Exception as e:
                     print(f"FFmpeg Error: {e}")
-                    final_file = file_to_delete # fallback to original video
-            
+                    final_file = file_to_delete
+
             translations_dict = {}
             if is_audio:
                 res, translations_dict = await process_audio_smart(final_file)
             else:
-                # Image: Gemini extracts text → Google Translate to all langs
                 img_res = await process_with_gemini_media(final_file, is_voice=False)
-                if img_res.startswith("❌") or img_res.startswith("⚠"):
+                if img_res.startswith("\u274c") or img_res.startswith("\u26a0"):
                     res = img_res
                 else:
                     res, translations_dict = translate_to_multi(img_res)
-            
-            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
-            
-            # Edge-TTS: speak ALL language results (every language gets its own voice)
-            if translations_dict and not res.startswith("❌") and not res.startswith("⚠"):
+
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=status_msg.message_id,
+                text=f"\u2705 \u179b\u1791\u17d2\u1792\u1795\u179b\u17d6\n\n{res}"
+            )
+
+            if translations_dict and not res.startswith("\u274c") and not res.startswith("\u26a0"):
                 await send_tts(translations_dict, chat_id, status_msg.message_id)
-            
+
             if final_file != file_to_delete and os.path.exists(final_file):
-                try: os.remove(final_file)
-                except: pass
-            
+                try:
+                    os.remove(final_file)
+                except Exception:
+                    pass
+
         else:
-            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ ទម្រង់ឯកសារនេះមិនត្រូវបានគាំទ្រទេ!")
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=status_msg.message_id,
+                text="\u274c \u178f\u1798\u17d2\u179a\u1784\u17a1\u1780\u179f\u17b6\u179a\u1793\u17c1\u17a0\u1798\u17b7\u1793\u178f\u17d2\u179a\u17bc\u179c\u1794\u17b6\u1793\u1782\u17b6\u17c6\u178f\u17d2\u179a\u178f\u17c2!"
+            )
             return
 
-        # D. IF WE HAVE TEXT (Direct or Extracted), APPLY HYBRID ROUTING
+        # D. TEXT / DOCUMENT -> show language selector
         if extracted_text:
             await bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
             await show_language_selector(chat_id, msg.message_id, extracted_text, user_id)
-            
+
     except Exception as e:
-        await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"❌ មានបញ្ហាប្រព័ន្ធ៖ {str(e)}")
-        
+        await bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=status_msg.message_id,
+            text=f"\u274c \u1798\u17b6\u1793\u1794\u1789\u17d2\u17a0\u17b6\u1794\u17d2\u179a\u1796\u17d0\u1793\u17d2\u1792\u17d6 {str(e)}"
+        )
+
     finally:
-        # CRITICAL: Always delete the downloaded file to prevent Render Free Tier disk space issues
         if file_to_delete and os.path.exists(file_to_delete):
             try:
                 os.remove(file_to_delete)
@@ -528,11 +578,8 @@ async def handle_update(update: Update):
 async def telegram_webhook(request: Request, token: str = None):
     if not bot:
         return {"error": "TELEGRAM_TOKEN is missing"}
-    
-    # Optional security check if token is provided in URL
     if token and token != TELEGRAM_TOKEN:
         return {"error": "Unauthorized"}
-        
     try:
         update_json = await request.json()
         update = Update.de_json(update_json, bot)
@@ -544,9 +591,8 @@ async def telegram_webhook(request: Request, token: str = None):
 
 @app.get("/")
 async def root():
-    return {"status": "Bot is running on Render Free Tier! FastAPI Webhook active."}
+    return {"status": "KhmerAI Translator Bot is running!"}
 
-# Render binds to os.environ.get("PORT", 8000)
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
