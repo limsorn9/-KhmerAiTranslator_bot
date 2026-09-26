@@ -41,12 +41,17 @@ def extract_text(file_path):
                     
                     models_to_try = [
                         "llama-3.2-90b-vision-preview",
-                        "llama-3.2-11b-vision-preview",
-                        "llama-3.2-90b-vision-instruct",
-                        "llama-3.2-11b-vision-instruct",
-                        "llama-3.2-90b-vision",
-                        "llama-3.2-11b-vision"
                     ]
+                    
+                    # ស្វែងរកឈ្មោះម៉ូដែល Vision ដែលកំពុងបើកឱ្យប្រើដោយស្វ័យប្រវត្តិ
+                    try:
+                        all_models = client.models.list().data
+                        vision_models = [m.id for m in all_models if "vision" in m.id.lower() or "vl" in m.id.lower() or "qwen" in m.id.lower()]
+                        if vision_models:
+                            models_to_try = vision_models
+                    except Exception:
+                        pass
+                        
                     for model_name in models_to_try:
                         try:
                             response = client.chat.completions.create(
