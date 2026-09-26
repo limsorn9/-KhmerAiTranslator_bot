@@ -39,7 +39,14 @@ def extract_text(file_path):
                     with open(file_path, "rb") as image_file:
                         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     
-                    models_to_try = ["llama-3.2-90b-vision-instruct", "llama-3.2-11b-vision-instruct"]
+                    models_to_try = [
+                        "llama-3.2-90b-vision-preview",
+                        "llama-3.2-11b-vision-preview",
+                        "llama-3.2-90b-vision-instruct",
+                        "llama-3.2-11b-vision-instruct",
+                        "llama-3.2-90b-vision",
+                        "llama-3.2-11b-vision"
+                    ]
                     for model_name in models_to_try:
                         try:
                             response = client.chat.completions.create(
