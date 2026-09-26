@@ -2,7 +2,7 @@ import os
 import re
 import json
 import asyncio
-from gtts import gTTS
+import edge_tts
 from deep_translator import GoogleTranslator
 import subprocess
 from datetime import datetime
@@ -126,12 +126,16 @@ def check_and_update_limit(user_id: int) -> bool:
 # ----------------- LLM ROUTING -----------------
 
 async def send_tts(text: str, chat_id: int, reply_to_message_id: int):
-    """Generate TTS and send as voice message"""
+    """Generate TTS using Microsoft Edge API and send as voice message"""
     try:
         lang = 'km' if is_khmer_text(text) else 'en'
-        tts = gTTS(text=text, lang=lang)
-        file_path = f"/tmp/tts_{chat_id}.ogg"
-        tts.save(file_path)
+        # Edge TTS voices: km-KH-SreymomNeural / km-KH-PisethNeural
+        voice = 'km-KH-SreymomNeural' if lang == 'km' else 'en-US-AriaNeural'
+        
+        file_path = f"/tmp/tts_{chat_id}.mp3"
+        communicate = edge_tts.Communicate(text, voice)
+        await communicate.save(file_path)
+        
         with open(file_path, 'rb') as f:
             await bot.send_voice(chat_id=chat_id, voice=f, reply_to_message_id=reply_to_message_id)
         os.remove(file_path)
