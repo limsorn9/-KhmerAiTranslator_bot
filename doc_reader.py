@@ -58,22 +58,32 @@ def extract_text(file_path):
                     )
                     text = response.choices[0].message.content.strip()
             except Exception as vision_e:
+                vision_error = str(vision_e)
                 logging.warning(f"Groq Vision failed, falling back to Tesseract: {vision_e}")
                 
             # បើ Groq បរាជ័យ ឬអត់បាន text ទើបប្រើ Tesseract
             if not text:
-                img = Image.open(file_path)
-                text = pytesseract.image_to_string(img, lang='khm+eng').strip()
-                if not text:
-                    text = pytesseract.image_to_string(img, lang='eng').strip()
-                if not text:
-                    text = pytesseract.image_to_string(img, lang='khm').strip()
+                try:
+                    img = Image.open(file_path)
+                    text = pytesseract.image_to_string(img, lang='khm+eng').strip()
+                    if not text:
+                        text = pytesseract.image_to_string(img, lang='eng').strip()
+                    if not text:
+                        text = pytesseract.image_to_string(img, lang='khm').strip()
+                except Exception as tess_e:
+                    tess_error = str(tess_e)
                     
         else:
             return None, f"❌ មិនគាំទ្រប្រភេទឯកសារ {ext} នេះទេ!"
             
         if not text or not text.strip():
-            return None, "❌ មិនមានអក្សរនៅក្នុងឯកសារនេះទេ! អាចថារូបភាពមិនច្បាស់ (សូមផ្ញើជា File/Document ជំនួសវិញ)។"
+            err_msg = "❌ មិនមានអក្សរនៅក្នុងឯកសារនេះទេ! អាចថារូបភាពមិនច្បាស់ (សូមផ្ញើជា File/Document ជំនួសវិញ)។"
+            try:
+                if vision_error:
+                    err_msg += f"\\n\\n[Debug] Groq API Error: {vision_error}"
+            except:
+                pass
+            return None, err_msg
             
         return text.strip(), None
     except Exception as e:
