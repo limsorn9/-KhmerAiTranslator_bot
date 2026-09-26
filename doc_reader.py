@@ -1,5 +1,4 @@
 import os
-import pymupdf # PyMuPDF
 import docx
 import openpyxl
 from PIL import Image
@@ -10,11 +9,7 @@ def extract_text(file_path):
     ext = os.path.splitext(file_path)[1].lower()
     text = ""
     try:
-        if ext == '.pdf':
-            doc = pymupdf.open(file_path)
-            for page in doc:
-                text += page.get_text() + "\n"
-        elif ext == '.docx':
+        if ext == '.docx':
             doc = docx.Document(file_path)
             for para in doc.paragraphs:
                 text += para.text + "\n"
