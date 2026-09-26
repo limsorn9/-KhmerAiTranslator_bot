@@ -54,6 +54,11 @@ rtdb_ref = rtdb.reference('users') if firebase_admin._apps else None
 DAILY_LIMIT = 10
 GEMINI_MODEL = "gemini-1.5-flash"
 
+# Super Admin IDs - no quota limit (get your ID from @userinfobot on Telegram)
+SUPER_ADMINS = set(
+    int(x.strip()) for x in os.environ.get("SUPER_ADMIN_IDS", "").split(",") if x.strip().isdigit()
+)
+
 # ----------------- API KEY ROTATION -----------------
 def get_api_keys(env_var_name: str, fallback_var_name: str) -> list:
     keys_str = os.environ.get(env_var_name, os.environ.get(fallback_var_name, ""))
@@ -242,8 +247,9 @@ async def handle_update(update: Update):
             await bot.send_message(chat_id=chat_id, text="❓ ពាក័បញ្ជានេៀមិនត្រូវបានគាំត្រទេ។ សាកល្បង /start")
             return
 
-    # 1. Limit Check (only for real AI requests)
-    if not check_and_update_limit(user_id):
+    # 1. Limit Check (skip for Super Admins)
+    is_admin = user_id in SUPER_ADMINS
+    if not is_admin and not check_and_update_limit(user_id):
         await bot.send_message(
             chat_id=chat_id, 
             text="🚫 **លើសកំណត់ប្រចាំថ្ង័!**\nអ្នកបានប្រើប័រអស់កំណត់ (១០ ដង/ថ្ង័) សម្រាប់ថ្ង័នេៀេលបហឹយ (Free Tier)។\n\n💡 ប្រើ /topup ដើមបី Upgrade!",
