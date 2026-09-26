@@ -176,11 +176,17 @@ async def process_audio_smart(file_path: str) -> str:
             # User strictly requested Gemini for Khmer only
             lang = getattr(transcription, 'language', 'en')
             if lang in ['km', 'khmer']:
-                return await process_with_gemini_media(file_path, is_voice=True)
+                # Gemini listens to Khmer
+                khmer_text = await process_with_gemini_media(file_path, is_voice=True)
+                if khmer_text.startswith("❌") or khmer_text.startswith("⚠"):
+                    return khmer_text
+                # Rule: Khmer audio -> Translate to English
+                return GoogleTranslator(source='auto', target='en').translate(khmer_text)
             else:
-                # If non-Khmer, Groq returns transcription text. Let's translate it to Khmer
-                en_text = transcription.text
-                return GoogleTranslator(source='auto', target='km').translate(en_text)
+                # Groq listens to Non-Khmer
+                non_khmer_text = transcription.text
+                # Rule: Non-Khmer audio -> Translate to Khmer
+                return GoogleTranslator(source='auto', target='km').translate(non_khmer_text)
                 
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
@@ -363,8 +369,10 @@ async def handle_update(update: Update):
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
             
             # Generate TTS if it was a voice/video translation
-            if is_audio and not res.startswith("❌") and not res.startswith("⚠️"):
-                await send_tts(res, chat_id, status_msg.message_id)
+            if is_audio and not res.startswith("❌") and not res.startswith("⚠"):
+                # "បញ្ចេញសម្លេងភាសាខ្មែរ១គត់" - ONLY pronounce Khmer output
+                if is_khmer_text(res):
+                    await send_tts(res, chat_id, status_msg.message_id)
             
             if final_file != file_to_delete and os.path.exists(final_file):
                 try: os.remove(final_file)
