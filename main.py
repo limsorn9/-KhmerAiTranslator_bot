@@ -177,8 +177,39 @@ async def send_tts(translations: dict, chat_id: int, reply_to_message_id: int):
 def is_khmer_text(text: str) -> bool:
     return bool(re.search(r'[\u1780-\u17FF]', text))
 
+def chunk_text(text: str, max_size: int = 4000):
+    chunks = []
+    lines = text.split('\n')
+    current_chunk = ""
+    for line in lines:
+        if len(current_chunk) + len(line) + 1 <= max_size:
+            current_chunk += line + "\n"
+        else:
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+            if len(line) > max_size:
+                for i in range(0, len(line), max_size):
+                    chunks.append(line[i:i+max_size])
+                current_chunk = ""
+            else:
+                current_chunk = line + "\n"
+    if current_chunk:
+        chunks.append(current_chunk.strip())
+    return chunks
+
 def translate_one(text: str, lang_code: str):
-    """Translate with up to 3 retries."""
+    if not text or not text.strip():
+        return ""
+    chunks = chunk_text(text, 4000)
+    translated_full = ""
+    for chunk in chunks:
+        trans = _translate_chunk(chunk, lang_code)
+        if trans is None:
+            return None
+        translated_full += trans + "\n"
+    return translated_full.strip()
+
+def _translate_chunk(text: str, lang_code: str):
     for attempt in range(3):
         try:
             result = ts.translate_text(text, translator='google', to_language=lang_code)
@@ -346,11 +377,15 @@ async def handle_update(update: Update):
 
         if data == "translate_all":
             res_str, translations_dict = translate_to_multi(text)
-            await bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=status.message_id,
-                text=f"{MSG_RESULT}\n\n{res_str}"
-            )
+            msg_text = f"{MSG_RESULT}\n\n{res_str}"
+            if len(msg_text) > 4000:
+                with open("/tmp/translation_all.txt", "w", encoding="utf-8") as f:
+                    f.write(res_str)
+                await bot.delete_message(chat_id=chat_id, message_id=status.message_id)
+                with open("/tmp/translation_all.txt", "rb") as f:
+                    await bot.send_document(chat_id=chat_id, document=f, caption=MSG_RESULT)
+            else:
+                await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=msg_text)
             if translations_dict:
                 await send_tts(translations_dict, chat_id, status.message_id)
         else:
@@ -359,11 +394,19 @@ async def handle_update(update: Update):
                 name, voice = LANG_CONFIG[lang_code]
                 trans = translate_one(text, lang_code)
                 if trans:
-                    await bot.edit_message_text(
-                        chat_id=chat_id,
-                        message_id=status.message_id,
-                        text=f"✅ {name}:\n\n{trans}"
-                    )
+                    msg_text = f"✅ {name}:\n\n{trans}"
+                    if len(msg_text) > 4000:
+                        with open(f"/tmp/translation_{lang_code}.txt", "w", encoding="utf-8") as f:
+                            f.write(trans)
+                        await bot.delete_message(chat_id=chat_id, message_id=status.message_id)
+                        with open(f"/tmp/translation_{lang_code}.txt", "rb") as f:
+                            await bot.send_document(chat_id=chat_id, document=f, caption=f"✅ {name}")
+                    else:
+                        await bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=status.message_id,
+                            text=msg_text
+                        )
                     await send_tts({voice: trans}, chat_id, status.message_id)
                 else:
                     await bot.edit_message_text(
