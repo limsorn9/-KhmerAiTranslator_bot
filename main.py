@@ -418,7 +418,11 @@ async def handle_update(update: Update):
 
         elif cmd == '/topup':
             # Send the QR text instruction (and QR Image if available, for now text)
-            await bot.send_message(chat_id=chat_id, text=MSG_TOPUP)
+            if os.path.exists('qr_code.png'):
+                with open('qr_code.png', 'rb') as f:
+                    await bot.send_photo(chat_id=chat_id, photo=f, caption=MSG_TOPUP)
+            else:
+                await bot.send_message(chat_id=chat_id, text=MSG_TOPUP)
             return
             
         elif cmd in ['/addmoney', '/removemoney', '/checkmoney']:
