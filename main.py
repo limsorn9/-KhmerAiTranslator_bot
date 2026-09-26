@@ -10,7 +10,7 @@ import subprocess
 from datetime import datetime
 import pytz
 from fastapi import FastAPI, Request
-from telegram import Update, Bot
+from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup
 import firebase_admin
 from firebase_admin import credentials, db as rtdb
 from groq import Groq
@@ -125,6 +125,9 @@ def check_and_update_limit(user_id: int) -> bool:
         })
         return True
 
+# Store text pending language selection
+PENDING_TRANSLATIONS = {}
+
 # ----------------- LLM ROUTING -----------------
 
 async def send_tts(translations: dict, chat_id: int, reply_to_message_id: int):
@@ -147,25 +150,41 @@ async def send_tts(translations: dict, chat_id: int, reply_to_message_id: int):
 def is_khmer_text(text: str) -> bool:
     return bool(re.search(r'[\u1780-\u17FF]', text))
 
+LANG_CONFIG = {
+    'km': ('🇰🇭 ខ្មែរ', 'km-KH-SreymomNeural'),
+    'en': ('🇬🇧 អង់គ្លេស', 'en-US-AriaNeural'),
+    'th': ('🇹🇭 ថៃ', 'th-TH-PremwadeeNeural'),
+    'vi': ('🇻🇳 វៀតណាម', 'vi-VN-HoaiMyNeural'),
+    'zh-CN': ('🇨🇳 ចិន', 'zh-CN-XiaoxiaoNeural'),
+    'ja': ('🇯🇵 ជបុ៉ន', 'ja-JP-NanamiNeural'),
+    'ko': ('🇰🇷 កូរ៉េ', 'ko-KR-SunHiNeural'),
+    'id': ('🇮🇩 អិនឌូនឹសី', 'id-ID-GadisNeural'),
+    'ms': ('🇲🇾 មាលី', 'ms-MY-YasminNeural'),
+}
+
+def translate_one(text: str, lang_code: str) -> str:
+    """Translate text to one language with retry"""
+    for attempt in range(3):
+        try:
+            result = GoogleTranslator(source='auto', target=lang_code).translate(text)
+            if result and result.strip():
+                return result.strip()
+        except Exception as e:
+            print(f"GoogleTranslate attempt {attempt+1} failed for {lang_code}: {e}")
+            import time
+            time.sleep(0.5)
+    return None
+
 def translate_to_multi(text: str):
-    targets = {
-        'km': ('🇰🇭 ខ្មែរ', 'km-KH-SreymomNeural'),
-        'en': ('🇬🇧 អង់គ្លេស', 'en-US-AriaNeural'),
-        'th': ('🇹🇭 ថៃ', 'th-TH-PremwadeeNeural'),
-        'vi': ('🇻🇳 វៀតណាម', 'vi-VN-HoaiMyNeural'),
-        'zh-CN': ('🇨🇳 ចិន', 'zh-CN-XiaoxiaoNeural'),
-        'ja': ('🇯🇵 ជបុ៉ន', 'ja-JP-NanamiNeural'),
-        'ko': ('🇰🇷 កូរ៉េ', 'ko-KR-SunHiNeural')
-    }
     res_str = ""
     translations = {}
-    for code, (name, voice) in targets.items():
-        try:
-            trans = GoogleTranslator(source='auto', target=code).translate(text)
+    for code, (name, voice) in LANG_CONFIG.items():
+        trans = translate_one(text, code)
+        if trans:
             res_str += f"{name}:\n{trans}\n\n"
             translations[voice] = trans
-        except Exception:
-            res_str += f"{name}:\n❌ Error\n\n"
+        else:
+            res_str += f"{name}:\n❌ បរាជ័យ។\n\n"
     return res_str.strip(), translations
 
 
@@ -267,8 +286,72 @@ async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> s
                     pass
     return "⚠️ Gemini Models ទាំងអស់កំពុងរវល់ (503/429)។ សូមរង់ចាំបន្តិចសិន!"
 
+
+async def show_language_selector(chat_id: int, reply_msg_id: int, extracted_text: str, user_id: int):
+    """Show inline keyboard for language selection"""
+    PENDING_TRANSLATIONS[user_id] = extracted_text
+    
+    buttons = []
+    row = []
+    for code, (name, voice) in LANG_CONFIG.items():
+        row.append(InlineKeyboardButton(name, callback_data=f"translate_{code}"))
+        if len(row) == 3:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([InlineKeyboardButton("🌍 ទាមក្រុមគ្រប់ភាសា", callback_data="translate_all")])
+    
+    keyboard = InlineKeyboardMarkup(buttons)
+    preview = extracted_text[:200] + ("..." if len(extracted_text) > 200 else "")
+    await bot.send_message(
+        chat_id=chat_id,
+        text=f"📄 អក្សរតឹកច្នាញ៖\n\n{preview}\n\n❓ ជ្រើសខជ័រភាសាតឹកផងបកប្រើកឈ៖↓",
+        reply_to_message_id=reply_msg_id,
+        reply_markup=keyboard
+    )
+
 # ----------------- TELEGRAM LOGIC -----------------
 async def handle_update(update: Update):
+
+    # Handle inline keyboard button presses
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        user_id = query.from_user.id
+        chat_id = query.message.chat_id
+        data = query.data
+        
+        if not data.startswith("translate_"):
+            return
+        
+        text = PENDING_TRANSLATIONS.get(user_id)
+        if not text:
+            await query.edit_message_text("⚠️ អន្តរ្យកាលប័កទេ! សូមផ្ញើរសារថ្មីម្តង.")
+            return
+        
+        status = await bot.send_message(chat_id=chat_id, text="⏳ កំពុងបកប្រើ...")
+        
+        if data == "translate_all":
+            res_str, translations_dict = translate_to_multi(text)
+            await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"✅ លទ្ធផល៖\n\n{res_str}")
+            if translations_dict:
+                await send_tts(translations_dict, chat_id, status.message_id)
+        else:
+            lang_code = data.replace("translate_", "")
+            if lang_code in LANG_CONFIG:
+                name, voice = LANG_CONFIG[lang_code]
+                trans = translate_one(text, lang_code)
+                if trans:
+                    await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"✅ {name}:\n\n{trans}")
+                    await send_tts({voice: trans}, chat_id, status.message_id)
+                else:
+                    await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"❌ បរាជ័យបកប្រើ {name}!")
+        
+        # Clean up pending
+        PENDING_TRANSLATIONS.pop(user_id, None)
+        return
+    
     if not update.message:
         return
         
@@ -429,10 +512,8 @@ async def handle_update(update: Update):
 
         # D. IF WE HAVE TEXT (Direct or Extracted), APPLY HYBRID ROUTING
         if extracted_text:
-            res_str, translations_dict = translate_to_multi(extracted_text)
-            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res_str}")
-            # Generate Voice for text too!
-            await send_tts(translations_dict, chat_id, status_msg.message_id)
+            await bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
+            await show_language_selector(chat_id, msg.message_id, extracted_text, user_id)
             
     except Exception as e:
         await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"❌ មានបញ្ហាប្រព័ន្ធ៖ {str(e)}")
