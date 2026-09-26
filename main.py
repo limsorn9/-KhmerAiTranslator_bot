@@ -263,9 +263,14 @@ async def handle_update(update: Update):
 
 # ----------------- FASTAPI ROUTES -----------------
 @app.post("/")
-async def telegram_webhook(request: Request):
+@app.post("/{token}")
+async def telegram_webhook(request: Request, token: str = None):
     if not bot:
         return {"error": "TELEGRAM_TOKEN is missing"}
+    
+    # Optional security check if token is provided in URL
+    if token and token != TELEGRAM_TOKEN:
+        return {"error": "Unauthorized"}
         
     try:
         update_json = await request.json()
