@@ -9,7 +9,7 @@ from telegram import Update, Bot
 import firebase_admin
 from firebase_admin import credentials, db as rtdb
 from groq import Groq
-import google.generativeai as genai
+from google import genai as google_genai
 import docx
 
 from contextlib import asynccontextmanager
@@ -139,11 +139,12 @@ def process_with_gemini_text(text: str) -> str:
             api_key = get_next_gemini_key()
             if not api_key:
                 return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
-                
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(GEMINI_MODEL)
+            client = google_genai.Client(api_key=api_key)
             prompt = f"You are a professional translator. Translate the following text to English (en). Output ONLY the translated text, nothing else:\n\n{text}"
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt
+            )
             return response.text.strip()
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
@@ -153,31 +154,31 @@ def process_with_gemini_text(text: str) -> str:
 
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
     for _ in range(3):
-        audio_file = None
+        uploaded_file = None
+        client = None
         try:
             api_key = get_next_gemini_key()
             if not api_key:
                 return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
-                
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(GEMINI_MODEL)
-            
-            audio_file = genai.upload_file(path=file_path)
+            client = google_genai.Client(api_key=api_key)
+            uploaded_file = client.files.upload(file=file_path)
             if is_voice:
                 prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary."
             else:
                 prompt = "Please extract all text visible in this image. Output ONLY the text exactly as seen."
-                
-            response = model.generate_content([prompt, audio_file])
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=[prompt, uploaded_file]
+            )
             return response.text.strip()
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
                 continue
             return f"❌ បរាជ័យក្នុងការវិភាគ File៖ {str(e)}"
         finally:
-            if audio_file:
+            if uploaded_file and client:
                 try:
-                    genai.delete_file(audio_file.name)
+                    client.files.delete(name=uploaded_file.name)
                 except:
                     pass
     return "⚠️ Gemini គណនីទាំងអស់កំពុងអស់កូតា (Free Tier Quota)។ សូមរង់ចាំបន្តិចសិន!"
