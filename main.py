@@ -1,4 +1,4 @@
-﻿import os
+import os
 import re
 import json
 import asyncio
@@ -227,9 +227,8 @@ async def transcribe_audio_file(file_path: str) -> str:
             else:
                 return transcription.text
         except Exception as e:
-            if "429" in str(e) or "quota" in str(e).lower():
-                continue
-            return f"❌ បរាជ័យ Groq: {str(e)}"
+            print(f"Groq API error on attempt: {e}")
+            continue
     return MSG_GROQ_QUOTA
 
 # ----------------- IMAGE PROCESSING -----------------
@@ -506,12 +505,8 @@ async def handle_update(update: Update):
                 os.makedirs("/tmp", exist_ok=True)
                 await file_obj.download_to_drive(file_to_delete)
                 if file_name.endswith('.txt'):
-                    try:
-                        with open(file_to_delete, 'r', encoding='utf-8') as f:
-                            extracted_text = f.read()
-                    except UnicodeDecodeError:
-                        with open(file_to_delete, 'r', encoding='utf-16', errors='replace') as f:
-                            extracted_text = f.read()
+                    with open(file_to_delete, 'r', encoding='utf-8', errors='replace') as f:
+                        extracted_text = f.read()
                 elif file_name.endswith('.docx'):
                     doc = docx.Document(file_to_delete)
                     extracted_text = "\n".join([para.text for para in doc.paragraphs])
