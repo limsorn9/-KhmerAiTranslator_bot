@@ -125,20 +125,34 @@ def check_and_update_limit(user_id: int) -> bool:
 
 # ----------------- LLM ROUTING -----------------
 
-async def send_tts(text: str, chat_id: int, reply_to_message_id: int):
-    """Generate TTS using Microsoft Edge API and send as voice message"""
+async def send_tts(translations: dict, chat_id: int, reply_to_message_id: int):
+    """Generate TTS using Microsoft Edge API for all languages and merge into one file"""
     try:
-        lang = 'km' if is_khmer_text(text) else 'en'
-        # Edge TTS voices: km-KH-SreymomNeural / km-KH-PisethNeural
-        voice = 'km-KH-SreymomNeural' if lang == 'km' else 'en-US-AriaNeural'
-        
-        file_path = f"/tmp/tts_{chat_id}.mp3"
-        communicate = edge_tts.Communicate(text, voice)
-        await communicate.save(file_path)
-        
-        with open(file_path, 'rb') as f:
-            await bot.send_voice(chat_id=chat_id, voice=f, reply_to_message_id=reply_to_message_id)
-        os.remove(file_path)
+        combined_file = f"/tmp/tts_{chat_id}_combined.mp3"
+        files_to_merge = []
+        for i, (voice, text) in enumerate(translations.items()):
+            if not text: continue
+            part_file = f"/tmp/tts_{chat_id}_{i}.mp3"
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(part_file)
+            files_to_merge.append(part_file)
+            
+        if files_to_merge:
+            concat_list = f"/tmp/concat_{chat_id}.txt"
+            with open(concat_list, "w") as f:
+                for file in files_to_merge:
+                    f.write(f"file '{file}'\n")
+                    
+            import subprocess
+            subprocess.run(["ffmpeg", "-f", "concat", "-safe", "0", "-i", concat_list, "-c", "copy", combined_file, "-y"], check=True)
+            
+            with open(combined_file, 'rb') as f:
+                await bot.send_voice(chat_id=chat_id, voice=f, reply_to_message_id=reply_to_message_id)
+            
+            os.remove(combined_file)
+            os.remove(concat_list)
+            for f in files_to_merge:
+                os.remove(f)
     except Exception as e:
         print(f"TTS Error: {e}")
 
@@ -147,25 +161,24 @@ def is_khmer_text(text: str) -> bool:
 
 def translate_to_multi(text: str):
     targets = {
-        'km': '🇰🇭 ខ្មែរ',
-        'en': '🇬🇧 អង់គ្លេស',
-        'th': '🇹🇭 ថៃ',
-        'vi': '🇻🇳 វៀតណាម',
-        'zh-CN': '🇨🇳 ចិន',
-        'ja': '🇯🇵 ជបុ៉ន',
-        'ko': '🇰🇷 កូរ៉េ'
+        'km': ('🇰🇭 ខ្មែរ', 'km-KH-SreymomNeural'),
+        'en': ('🇬🇧 អង់គ្លេស', 'en-US-AriaNeural'),
+        'th': ('🇹🇭 ថៃ', 'th-TH-PremwadeeNeural'),
+        'vi': ('🇻🇳 វៀតណាម', 'vi-VN-HoaiMyNeural'),
+        'zh-CN': ('🇨🇳 ចិន', 'zh-CN-XiaoxiaoNeural'),
+        'ja': ('🇯🇵 ជបុ៉ន', 'ja-JP-NanamiNeural'),
+        'ko': ('🇰🇷 កូរ៉េ', 'ko-KR-SunHiNeural')
     }
     res_str = ""
-    km_text = ""
-    for code, name in targets.items():
+    translations = {}
+    for code, (name, voice) in targets.items():
         try:
             trans = GoogleTranslator(source='auto', target=code).translate(text)
             res_str += f"{name}:\n{trans}\n\n"
-            if code == 'km':
-                km_text = trans
+            translations[voice] = trans
         except Exception:
             res_str += f"{name}:\n❌ Error\n\n"
-    return res_str.strip(), km_text
+    return res_str.strip(), translations
 
 
 
@@ -370,21 +383,20 @@ async def handle_update(update: Update):
                     print(f"FFmpeg Error: {e}")
                     final_file = file_to_delete # fallback to original video
             
-            km_text = ""
+            translations_dict = {}
             if is_audio:
-                res, km_text = await process_audio_smart(final_file)
+                res, translations_dict = await process_audio_smart(final_file)
             else:
                 img_res = await process_with_gemini_media(final_file, is_voice=False)
                 if img_res.startswith("❌") or img_res.startswith("⚠"):
                     res = img_res
                 else:
-                    res, km_text = translate_to_multi(img_res)
+                    res, translations_dict = translate_to_multi(img_res)
             
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
             
-            # Generate TTS if it was a voice/video translation
-            if is_audio and km_text and not res.startswith("❌") and not res.startswith("⚠"):
-                await send_tts(km_text, chat_id, status_msg.message_id)
+            if translations_dict and not res.startswith("❌") and not res.startswith("⚠"):
+                await send_tts(translations_dict, chat_id, status_msg.message_id)
             
             if final_file != file_to_delete and os.path.exists(final_file):
                 try: os.remove(final_file)
@@ -396,8 +408,10 @@ async def handle_update(update: Update):
 
         # D. IF WE HAVE TEXT (Direct or Extracted), APPLY HYBRID ROUTING
         if extracted_text:
-            res_str, km_text = translate_to_multi(extracted_text)
+            res_str, translations_dict = translate_to_multi(extracted_text)
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res_str}")
+            # Generate Voice for text too!
+            await send_tts(translations_dict, chat_id, status_msg.message_id)
             
     except Exception as e:
         await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"❌ មានបញ្ហាប្រព័ន្ធ៖ {str(e)}")
