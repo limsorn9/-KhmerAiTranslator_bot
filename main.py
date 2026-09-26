@@ -126,35 +126,21 @@ def check_and_update_limit(user_id: int) -> bool:
 # ----------------- LLM ROUTING -----------------
 
 async def send_tts(translations: dict, chat_id: int, reply_to_message_id: int):
-    """Generate TTS using Microsoft Edge API for all languages and merge into one file"""
-    try:
-        combined_file = f"/tmp/tts_{chat_id}_combined.mp3"
-        files_to_merge = []
-        for i, (voice, text) in enumerate(translations.items()):
-            if not text: continue
-            part_file = f"/tmp/tts_{chat_id}_{i}.mp3"
+    """Edge-TTS: Send ONE voice per language as separate Telegram voice messages"""
+    for voice, text in translations.items():
+        if not text: continue
+        part_file = f"/tmp/tts_{chat_id}_{voice[:5]}.mp3"
+        try:
             communicate = edge_tts.Communicate(text, voice)
             await communicate.save(part_file)
-            files_to_merge.append(part_file)
-            
-        if files_to_merge:
-            concat_list = f"/tmp/concat_{chat_id}.txt"
-            with open(concat_list, "w") as f:
-                for file in files_to_merge:
-                    f.write(f"file '{file}'\n")
-                    
-            import subprocess
-            subprocess.run(["ffmpeg", "-f", "concat", "-safe", "0", "-i", concat_list, "-c", "copy", combined_file, "-y"], check=True)
-            
-            with open(combined_file, 'rb') as f:
+            with open(part_file, 'rb') as f:
                 await bot.send_voice(chat_id=chat_id, voice=f, reply_to_message_id=reply_to_message_id)
-            
-            os.remove(combined_file)
-            os.remove(concat_list)
-            for f in files_to_merge:
-                os.remove(f)
-    except Exception as e:
-        print(f"TTS Error: {e}")
+        except Exception as e:
+            print(f"TTS Error ({voice}): {e}")
+        finally:
+            if os.path.exists(part_file):
+                try: os.remove(part_file)
+                except: pass
 
 def is_khmer_text(text: str) -> bool:
     return bool(re.search(r'[\u1780-\u17FF]', text))
@@ -183,13 +169,20 @@ def translate_to_multi(text: str):
 
 
 
-async def process_audio_smart(file_path: str) -> str:
-    # Use Groq Whisper to detect and transcribe. If Khmer, delegate to Gemini!
+async def process_audio_smart(file_path: str):
+    """
+    ROUTING RULES:
+    - Groq (Whisper): listens to ALL languages. 
+    - If detected Khmer → Groq hands off to Gemini to transcribe (Gemini ONLY role).
+    - If detected non-Khmer → Groq transcribes directly.
+    - Google Translate: translates the final text to ALL 7 languages.
+    - Returns (display_text, translations_dict) for Edge-TTS.
+    """
     for _ in range(3):
         try:
             api_key = get_next_groq_key()
             if not api_key:
-                return "❌ គ្មាន GROQ_API_KEY!", ""
+                return "❌ គ្មាន GROQ_API_KEY!", {}
             groq_client = Groq(api_key=api_key)
             with open(file_path, "rb") as f:
                 transcription = groq_client.audio.transcriptions.create(
@@ -198,22 +191,26 @@ async def process_audio_smart(file_path: str) -> str:
                     response_format="verbose_json"
                 )
             
-            # User strictly requested Gemini for Khmer only
             lang = getattr(transcription, 'language', 'en')
+            
             if lang in ['km', 'khmer']:
+                # Groq detected Khmer → pass to Gemini (Gemini's only role)
                 khmer_text = await process_with_gemini_media(file_path, is_voice=True)
                 if khmer_text.startswith("❌") or khmer_text.startswith("⚠"):
-                    return khmer_text, ""
+                    return khmer_text, {}
+                # Google Translate: translate Khmer → all 7 langs
                 return translate_to_multi(khmer_text)
             else:
-                non_khmer_text = transcription.text
-                return translate_to_multi(non_khmer_text)
+                # Groq listens non-Khmer, produces text directly
+                detected_text = transcription.text
+                # Google Translate: translate to all 7 langs
+                return translate_to_multi(detected_text)
                 
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
                 continue
-            return f"❌ បរាជ័យ Groq Audio៖ {str(e)}", ""
-    return "⚠️ Groq Audio កំពុងអស់កូតា។", ""
+            return f"❌ បរាជ័យ Groq Audio: {str(e)}", {}
+    return "⚠️ Groq Audio អស់កូតា។ សូមរង់ចាំ!", {}
 
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
     if is_voice:
@@ -387,6 +384,7 @@ async def handle_update(update: Update):
             if is_audio:
                 res, translations_dict = await process_audio_smart(final_file)
             else:
+                # Image: Gemini extracts text → Google Translate to all langs
                 img_res = await process_with_gemini_media(final_file, is_voice=False)
                 if img_res.startswith("❌") or img_res.startswith("⚠"):
                     res = img_res
@@ -395,6 +393,7 @@ async def handle_update(update: Update):
             
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
             
+            # Edge-TTS: speak ALL language results (every language gets its own voice)
             if translations_dict and not res.startswith("❌") and not res.startswith("⚠"):
                 await send_tts(translations_dict, chat_id, status_msg.message_id)
             
