@@ -2,6 +2,8 @@ import os
 import re
 import json
 import asyncio
+from gtts import gTTS
+import subprocess
 from datetime import datetime
 import pytz
 from fastapi import FastAPI, Request
@@ -121,6 +123,20 @@ def check_and_update_limit(user_id: int) -> bool:
         return True
 
 # ----------------- LLM ROUTING -----------------
+
+async def send_tts(text: str, chat_id: int, reply_to_message_id: int):
+    """Generate TTS and send as voice message"""
+    try:
+        lang = 'km' if is_khmer_text(text) else 'en'
+        tts = gTTS(text=text, lang=lang)
+        file_path = f"/tmp/tts_{chat_id}.ogg"
+        tts.save(file_path)
+        with open(file_path, 'rb') as f:
+            await bot.send_voice(chat_id=chat_id, voice=f, reply_to_message_id=reply_to_message_id)
+        os.remove(file_path)
+    except Exception as e:
+        print(f"TTS Error: {e}")
+
 def is_khmer_text(text: str) -> bool:
     return bool(re.search(r'[\u1780-\u17FF]', text))
 
@@ -303,17 +319,48 @@ async def handle_update(update: Update):
                 return
                 
         # C. HANDLE VOICE OR PHOTO
-        elif msg.voice or msg.photo:
-            file_id = msg.voice.file_id if msg.voice else msg.photo[-1].file_id
-            ext = ".ogg" if msg.voice else ".jpg"
+        elif msg.voice or msg.photo or msg.video or msg.video_note:
+            if msg.voice:
+                file_id = msg.voice.file_id
+                ext = ".ogg"
+            elif msg.video:
+                file_id = msg.video.file_id
+                ext = ".mp4"
+            elif msg.video_note:
+                file_id = msg.video_note.file_id
+                ext = ".mp4"
+            else:
+                file_id = msg.photo[-1].file_id
+                ext = ".jpg"
+
             file_to_delete = f"/tmp/media_{msg.message_id}{ext}"
             
             os.makedirs("/tmp", exist_ok=True)
             file_obj = await bot.get_file(file_id)
             await file_obj.download_to_drive(file_to_delete)
             
-            res = await process_with_gemini_media(file_to_delete, is_voice=bool(msg.voice))
+            is_audio = bool(msg.voice or msg.video or msg.video_note)
+            final_file = file_to_delete
+            
+            # Extract audio from video to save Gemini upload time/size
+            if ext == ".mp4":
+                final_file = f"/tmp/audio_{msg.message_id}.wav"
+                try:
+                    subprocess.run(["ffmpeg", "-i", file_to_delete, "-q:a", "0", "-map", "a", final_file, "-y"], check=True)
+                except Exception as e:
+                    print(f"FFmpeg Error: {e}")
+                    final_file = file_to_delete # fallback to original video
+            
+            res = await process_with_gemini_media(final_file, is_voice=is_audio)
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
+            
+            # Generate TTS if it was a voice/video translation
+            if is_audio and not res.startswith("❌") and not res.startswith("⚠️"):
+                await send_tts(res, chat_id, status_msg.message_id)
+            
+            if final_file != file_to_delete and os.path.exists(final_file):
+                try: os.remove(final_file)
+                except: pass
             
         else:
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ មិនគាំទ្រទម្រង់ឯកសារនេះទេ!")
