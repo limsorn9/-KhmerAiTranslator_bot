@@ -203,15 +203,17 @@ async def handle_update(update: Update):
         if cmd == '/start':
             await bot.send_message(
                 chat_id=chat_id,
-                text="👋 សួស្ត័! ខ្ញុមជា **KhmerAI Translator Bot**\n\n"
-                     "📌 **ខ្ញុមអាចជួយអ្នកបាន**៖\n"
-                     "• ✍️ ផ្ញើរអត្ថបត (ខ្មែរ→English, English→ខ្មែរ)\n"
-                     "• 🎤 ផ្ញើរសំលើង (Voice message)\n"
-                     "• 📄 ផ្ញើរឥកសារ (.txt, .docx)\n"
-                     "• 🖼️ ផ្ញើររូបភាព\n\n"
-                     "⚡ **Free Tier:** ១០ សារ/ថ្ង័\n"
-                     "📊 ប្រើប័៖ /mycoin\n"
-                     "👉 សូមផ្ញើរសារណាមនឡណមនួយដើមបីចាប់ផ័តភ្តើម!",
+                text=(
+                    "👋 សួស្តី! ខ្ញុំជាគ្រូសន KhmerAI Translator Bot\n\n"
+                    "📌 ខ្ញុំអាចជួយអ្នកបាន៖\n"
+                    "• ✍️ ផ្ញើអត្ថបទ ខ្មែរ→English, English→ខ្មែរ និងភាសាក្នុងតំបន់\n"
+                    "• 🎤 ផ្ញើសំឡេង (Voice message)\n"
+                    "• 📄 ផ្ញើឯកសារ (.txt, .docx)\n"
+                    "• 🖼️ ផ្ញើរូបភាព\n\n"
+                    "⚡ Free Tier: ១០ សារ/ថ្ងៃ\n"
+                    "📊 ប្រើ: /mycoin សម្រាប់ឆែកសមតុល្យ\n"
+                    "👉 សូមផ្ញើសារណាមួយដើម្បីចាប់ផ្តើម!"
+                ),
                 parse_mode="Markdown"
             )
             return
