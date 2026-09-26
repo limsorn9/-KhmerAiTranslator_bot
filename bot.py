@@ -378,36 +378,6 @@ def transcribe_with_google_free(file_path):
         logging.error(f"Google Speech Recognition Error: {e}")
         return None, f"❌ បញ្ហាប្រព័ន្ធ Google ស្តាប់សម្លេង៖ {str(e)}"
 
-def transcribe_with_gemini_audio(file_path):
-    import os
-    import logging
-    import google.generativeai as genai
-    try:
-        GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-        if not GEMINI_API_KEY:
-            return None, "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
-            
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        
-        # Upload the audio file to Gemini File API
-        audio_file = genai.upload_file(path=file_path)
-        
-        prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary or explanations."
-        
-        response = model.generate_content([prompt, audio_file])
-        text = response.text.strip()
-        
-        # Clean up the file from Gemini servers
-        try:
-            genai.delete_file(audio_file.name)
-        except Exception as cleanup_err:
-            logging.warning(f"Failed to delete Gemini file {audio_file.name}: {cleanup_err}")
-            
-        return text, None
-    except Exception as e:
-        logging.error(f"Gemini Audio STT Error: {e}")
-        return None, f"❌ បញ្ហាប្រព័ន្ធ Gemini ស្តាប់សម្លេង៖ {str(e)}"
 
 async def process_text_action(msg, processing_msg, target_lang, voice_id):
     try:
@@ -452,8 +422,8 @@ async def process_media_action(msg, processing_msg, target_lang, voice_id):
     try:
         await file_obj.download_to_drive(input_path)
         
-        # ១. ស្តាប់សំឡេងដោយប្រើប្រាស់ Gemini Audio API តាមរយៈ File API
-        original_text, error_msg = await asyncio.to_thread(transcribe_with_gemini_audio, input_path)
+        # ១. ស្តាប់សំឡេងដោយប្រើប្រាស់ Free SpeechRecognition
+        original_text, error_msg = await asyncio.to_thread(transcribe_with_google_free, input_path)
         
         if error_msg:
             await processing_msg.edit_text(error_msg)
