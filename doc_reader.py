@@ -39,24 +39,32 @@ def extract_text(file_path):
                     with open(file_path, "rb") as image_file:
                         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
                     
-                    response = client.chat.completions.create(
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": "Extract all the text from this image. Output only the extracted text exactly as it appears. Do not add any explanation or conversational text."},
+                    models_to_try = ["llama-3.2-90b-vision-instruct", "llama-3.2-11b-vision-instruct"]
+                    for model_name in models_to_try:
+                        try:
+                            response = client.chat.completions.create(
+                                messages=[
                                     {
-                                        "type": "image_url",
-                                        "image_url": {
-                                            "url": f"data:image/jpeg;base64,{encoded_string}",
-                                        },
-                                    },
+                                        "role": "user",
+                                        "content": [
+                                            {"type": "text", "text": "Extract all the text from this image. Output only the extracted text exactly as it appears. Do not add any explanation or conversational text."},
+                                            {
+                                                "type": "image_url",
+                                                "image_url": {
+                                                    "url": f"data:image/jpeg;base64,{encoded_string}",
+                                                },
+                                            },
+                                        ],
+                                    }
                                 ],
-                            }
-                        ],
-                        model="llama-3.2-11b-vision-preview",
-                    )
-                    text = response.choices[0].message.content.strip()
+                                model=model_name,
+                            )
+                            text = response.choices[0].message.content.strip()
+                            if text:
+                                break
+                        except Exception as loop_e:
+                            logging.warning(f"Failed with {model_name}: {loop_e}")
+                            vision_error = str(loop_e)
             except Exception as vision_e:
                 vision_error = str(vision_e)
                 logging.warning(f"Groq Vision failed, falling back to Tesseract: {vision_e}")
