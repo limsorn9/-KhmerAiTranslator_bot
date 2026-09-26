@@ -66,6 +66,7 @@ rtdb_ref = rtdb.reference('users') if firebase_admin._apps else None
 
 DAILY_LIMIT = 5
 GEMINI_MODELS = [
+    "gemini-3.8-flash",
     "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
@@ -505,8 +506,12 @@ async def handle_update(update: Update):
                 os.makedirs("/tmp", exist_ok=True)
                 await file_obj.download_to_drive(file_to_delete)
                 if file_name.endswith('.txt'):
-                    with open(file_to_delete, 'r', encoding='utf-8') as f:
-                        extracted_text = f.read()
+                    try:
+                        with open(file_to_delete, 'r', encoding='utf-8') as f:
+                            extracted_text = f.read()
+                    except UnicodeDecodeError:
+                        with open(file_to_delete, 'r', encoding='utf-16', errors='replace') as f:
+                            extracted_text = f.read()
                 elif file_name.endswith('.docx'):
                     doc = docx.Document(file_to_delete)
                     extracted_text = "\n".join([para.text for para in doc.paragraphs])
