@@ -37,7 +37,7 @@ if not firebase_admin._apps:
 db = firestore.client() if firebase_admin._apps else None
 
 DAILY_LIMIT = 10
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = "gemini-1.5-flash"
 
 # ----------------- API KEY ROTATION -----------------
 def get_api_keys(env_var_name: str, fallback_var_name: str) -> list:
