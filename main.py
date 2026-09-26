@@ -158,8 +158,8 @@ LANG_CONFIG = {
     'zh-CN': ('🇨🇳 ចិន', 'zh-CN-XiaoxiaoNeural'),
     'ja': ('🇯🇵 ជបុ៉ន', 'ja-JP-NanamiNeural'),
     'ko': ('🇰🇷 កូរ៉េ', 'ko-KR-SunHiNeural'),
-    'id': ('🇮🇩 អិនឌូនឹសី', 'id-ID-GadisNeural'),
-    'ms': ('🇲🇾 មាលី', 'ms-MY-YasminNeural'),
+    'id': ('🇮🇩 ឥណ្ឌូណេស៊ី', 'id-ID-GadisNeural'),
+    'ms': ('🇲🇾 ម៉ាឡេស៊ី', 'ms-MY-YasminNeural'),
 }
 
 def translate_one(text: str, lang_code: str) -> str:
@@ -231,7 +231,7 @@ async def process_audio_smart(file_path: str):
             if "429" in str(e) or "quota" in str(e).lower():
                 continue
             return f"❌ បរាជ័យ Groq Audio: {str(e)}", {}
-    return "⚠️ Groq Audio អស់កូតា។ សូមរង់ចាំ!", {}
+    return "⚠️ Groq Audio អស់ Quota! សូមរង់ចាំ ១ នាទី។", {}
 
 def extract_image_text_local(file_path: str) -> str:
     """Tesseract OCR: fast local image-to-text, supports Khmer+English+All"""
@@ -271,7 +271,7 @@ async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> s
             )
             result = response.text.strip()
             if result == "NO_TEXT" or not result:
-                return "⚠️ រូបភាពមិនច្បាស់ ឬ គ្មានអក្សរ! សូមផ្ញើរូបភាពថ្មី."
+                return "⚠️ រូបភាពមិនច្បាស់ ឬ មិនមានអក្សរ! សូមផ្ញើរូបភាពថ្មី។"
             return result
         except Exception as e:
             err = str(e)
@@ -284,7 +284,7 @@ async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> s
                     client.files.delete(name=uploaded_file.name)
                 except:
                     pass
-    return "⚠️ Gemini Models ទាំងអស់កំពុងរវល់ (503/429)។ សូមរង់ចាំបន្តិចសិន!"
+    return "⚠️ Gemini មមានភាព Overload! សូមរង់ចាំ ១-២ នាទីហើយព្យាយាមម្តងទៀត។"
 
 
 async def show_language_selector(chat_id: int, reply_msg_id: int, extracted_text: str, user_id: int):
@@ -300,13 +300,13 @@ async def show_language_selector(chat_id: int, reply_msg_id: int, extracted_text
             row = []
     if row:
         buttons.append(row)
-    buttons.append([InlineKeyboardButton("🌍 ទាមក្រុមគ្រប់ភាសា", callback_data="translate_all")])
+    buttons.append([InlineKeyboardButton("🌍 បកប្រែគ្រប់ភាសា", callback_data="translate_all")])
     
     keyboard = InlineKeyboardMarkup(buttons)
     preview = extracted_text[:200] + ("..." if len(extracted_text) > 200 else "")
     await bot.send_message(
         chat_id=chat_id,
-        text=f"📄 អក្សរតឹកច្នាញ៖\n\n{preview}\n\n❓ ជ្រើសខជ័រភាសាតឹកផងបកប្រើកឈ៖↓",
+        text=f"📄 អក្សរដែលបានទាញចេញ៖\n\n{preview}\n\n❓ សូមជ្រើសរើសភាសាដែលចង់បកប្រែ ↓",
         reply_to_message_id=reply_msg_id,
         reply_markup=keyboard
     )
@@ -327,10 +327,10 @@ async def handle_update(update: Update):
         
         text = PENDING_TRANSLATIONS.get(user_id)
         if not text:
-            await query.edit_message_text("⚠️ អន្តរ្យកាលប័កទេ! សូមផ្ញើរសារថ្មីម្តង.")
+            await query.edit_message_text("⚠️ អត្ថបទផុតអាយុហើយ! សូមផ្ញើសារថ្មីម្តងទៀត។")
             return
         
-        status = await bot.send_message(chat_id=chat_id, text="⏳ កំពុងបកប្រើ...")
+        status = await bot.send_message(chat_id=chat_id, text="⏳ កំពុងបកប្រែ...")
         
         if data == "translate_all":
             res_str, translations_dict = translate_to_multi(text)
@@ -346,7 +346,7 @@ async def handle_update(update: Update):
                     await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"✅ {name}:\n\n{trans}")
                     await send_tts({voice: trans}, chat_id, status.message_id)
                 else:
-                    await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"❌ បរាជ័យបកប្រើ {name}!")
+                    await bot.edit_message_text(chat_id=chat_id, message_id=status.message_id, text=f"❌ បរាជ័យក្នុងការបកប្រែ {name}! សូមព្យាយាមម្តងទៀត។")
         
         # Clean up pending
         PENDING_TRANSLATIONS.pop(user_id, None)
@@ -366,18 +366,17 @@ async def handle_update(update: Update):
             await bot.send_message(
                 chat_id=chat_id,
                 text=(
-                    "👋 សួស្តី! ខ្ញុំជាគ្រូសន KhmerAI Translator Bot\n\n"
+                    "👋 សួស្តី! ខ្ញុំជា KhmerAI Translator Bot\n\n"
                     "📌 ខ្ញុំអាចជួយអ្នកបាន៖\n"
-                    "• ✍️ ផ្ញើអត្ថបទ ខ្មែរ→English, English→ខ្មែរ និងភាសាក្នុងតំបន់\n"
+                    "• ✍️ ផ្ញើអត្ថបទភាសាណាក៏បាន → បកប្រែ ៩ ភាសា\n"
                     "• 🎤 ផ្ញើសំឡេង (Voice message)\n"
                     "• 📄 ផ្ញើឯកសារ (.txt, .docx)\n"
                     "• 🖼️ ផ្ញើរូបភាព\n\n"
-                    "⚡ Free Tier: ១០ សារ/ថ្ងៃ\n"
-                    "📊 ប្រើ: /mycoin សម្រាប់ឆែកសមតុល្យ\n"
+                    "⚡ Free Tier: ១០ ដង/ថ្ងៃ\n"
+                    "📊 ប្រើ /mycoin ដើម្បីមើលចំនួនប្រើប្រាស់\n"
                     "👉 សូមផ្ញើសារណាមួយដើម្បីចាប់ផ្តើម!"
                 ),
-                parse_mode="Markdown"
-            )
+                )
             return
         elif cmd == '/mycoin':
             tz = pytz.timezone('Asia/Phnom_Penh')
@@ -390,25 +389,23 @@ async def handle_update(update: Update):
             remaining = max(0, DAILY_LIMIT - count)
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"📊 **ស្ថានភាពការប្រើប័របស់ថ្ង័នេៀ**\n\n"
-                     f"✅ បានប្រើ៖ **{count}/{DAILY_LIMIT}** ដង\n"
-                     f"🔋 នៅសល់៖ **{remaining}** ដង\n\n"
-                     f"🔄 កូតានឹង Reset ឥប័នវិញនៅក្នុងទិនថ្ង័នៅ។",
-                parse_mode="Markdown"
-            )
+                text=f"📊 ស្ថានភាពប្រចាំថ្ងៃ\n\n"
+                     f"✅ បានប្រើ: {count}/{DAILY_LIMIT} ដង\n"
+                     f"🔋 នៅសល់: {remaining} ដង\n\n"
+                     f"🔄 កូតានឹង Reset ឡើងវិញនៅថ្ងៃស្អែក។",
+                )
             return
         elif cmd == '/topup':
             await bot.send_message(
                 chat_id=chat_id,
-                text="💎 **Upgrade to Premium**\n\n"
-                     "🆓 Free Tier: ១០ សារ/ថ្ង័\n"
+                text="💎 Upgrade to Premium\n\n"
+                     "🆓 Free Tier: ១០ ដង/ថ្ងៃ\n"
                      "⭐ Premium: សារគ្មានដែន\n\n"
-                     "📩 តំនាកតាមអ្នកគ្រប់គ្រង: @YourAdminHandle",
-                parse_mode="Markdown"
-            )
+                     "📩 ទំនាក់ទំនងអ្នកគ្រប់គ្រង: @YourAdminHandle",
+                )
             return
         else:
-            await bot.send_message(chat_id=chat_id, text="❓ ពាក័បញ្ជានេៀមិនត្រូវបានគាំត្រទេ។ សាកល្បង /start")
+            await bot.send_message(chat_id=chat_id, text="❓ ពាក្យបញ្ជានេះមិនត្រូវបានគាំទ្រទេ។ សូមសាកល្បង /start")
             return
 
     # 1. Limit Check (skip for Super Admins)
@@ -416,9 +413,8 @@ async def handle_update(update: Update):
     if not is_admin and not check_and_update_limit(user_id):
         await bot.send_message(
             chat_id=chat_id, 
-            text="🚫 **លើសកំណត់ប្រចាំថ្ង័!**\nអ្នកបានប្រើប័រអស់កំណត់ (១០ ដង/ថ្ង័) សម្រាប់ថ្ង័នេៀេលបហឹយ (Free Tier)។\n\n💡 ប្រើ /topup ដើមបី Upgrade!",
-            parse_mode="Markdown"
-        )
+            text="🚫 អ្នកបានប្រើគ្រប់ ១០ ដងសម្រាប់ថ្ងៃនេះហើយ (Free Tier)!\n\n💡 ប្រើ /topup ដើម្បី Upgrade!",
+            )
         return
 
     status_msg = await bot.send_message(chat_id=chat_id, text="⏳ កំពុងដំណើរការ...")
@@ -449,7 +445,7 @@ async def handle_update(update: Update):
                     doc = docx.Document(file_to_delete)
                     extracted_text = "\n".join([para.text for para in doc.paragraphs])
             else:
-                await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ ទទួលយកតែឯកសារ .txt និង .docx ប៉ុណ្ណោះសម្រាប់អត្ថបទ!")
+                await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ ទទួលយកតែ .txt និង .docx ប៉ុណ្ណោះ!")
                 return
                 
         # C. HANDLE VOICE OR PHOTO
@@ -507,7 +503,7 @@ async def handle_update(update: Update):
                 except: pass
             
         else:
-            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ មិនគាំទ្រទម្រង់ឯកសារនេះទេ!")
+            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ ទម្រង់ឯកសារនេះមិនត្រូវបានគាំទ្រទេ!")
             return
 
         # D. IF WE HAVE TEXT (Direct or Extracted), APPLY HYBRID ROUTING
