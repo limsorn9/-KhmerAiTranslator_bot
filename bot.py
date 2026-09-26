@@ -356,7 +356,8 @@ def transcribe_with_gcp_speech(file_path):
         import logging
         
         # Check if credentials exist in environment
-        if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
+        creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON") or os.environ.get("FIREBASE_CREDENTIALS")
+        if not creds_json and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
             return None, "❌ សូមកំណត់ GOOGLE_APPLICATION_CREDENTIALS (ជា File JSON) នៅក្នុង Render ជាមុនសិន ទើបអាចប្រើ Google Speech បាន!"
             
         # Convert audio to mono, 16000Hz WAV format for optimal accuracy with GCP
@@ -367,9 +368,7 @@ def transcribe_with_gcp_speech(file_path):
         audio.export(wav_io, format="wav")
         content = wav_io.getvalue()
         
-        # Optional: Initialize client using JSON string if provided in env
         # Otherwise it auto-detects from GOOGLE_APPLICATION_CREDENTIALS path
-        creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
         if creds_json:
             import json
             from google.oauth2 import service_account
