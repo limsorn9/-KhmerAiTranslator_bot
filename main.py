@@ -12,13 +12,25 @@ from groq import Groq
 import google.generativeai as genai
 import docx
 
-# ----------------- INITIALIZATION -----------------
-app = FastAPI()
+from contextlib import asynccontextmanager
 
+# ----------------- INITIALIZATION -----------------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 if not TELEGRAM_TOKEN:
     print("WARNING: TELEGRAM_TOKEN not set!")
 bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if bot:
+        await bot.initialize()
+    yield
+    if bot:
+        await bot.shutdown()
+
+app = FastAPI(lifespan=lifespan)
+
+
 
 # Firebase Init
 if not firebase_admin._apps:
