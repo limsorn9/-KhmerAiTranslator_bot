@@ -191,12 +191,62 @@ async def handle_update(update: Update):
     msg = update.message
     user_id = msg.from_user.id
     chat_id = msg.chat_id
-    
-    # 1. Limit Check
+
+    # 0. HANDLE COMMANDS FIRST (no quota needed)
+    if msg.text and msg.text.startswith('/'):
+        cmd = msg.text.split()[0].lower()
+        if cmd == '/start':
+            await bot.send_message(
+                chat_id=chat_id,
+                text="👋 សួស្ត័! ខ្ញុមជា **KhmerAI Translator Bot**\n\n"
+                     "📌 **ខ្ញុមអាចជួយអ្នកបាន**៖\n"
+                     "• ✍️ ផ្ញើរអត្ថបត (ខ្មែរ→English, English→ខ្មែរ)\n"
+                     "• 🎤 ផ្ញើរសំលើង (Voice message)\n"
+                     "• 📄 ផ្ញើរឥកសារ (.txt, .docx)\n"
+                     "• 🖼️ ផ្ញើររូបភាព\n\n"
+                     "⚡ **Free Tier:** ១០ សារ/ថ្ង័\n"
+                     "📊 ប្រើប័៖ /mycoin\n"
+                     "👉 សូមផ្ញើរសារណាមនឡណមនួយដើមបីចាប់ផ័តភ្តើម!",
+                parse_mode="Markdown"
+            )
+            return
+        elif cmd == '/mycoin':
+            tz = pytz.timezone('Asia/Phnom_Penh')
+            today_str = datetime.now(tz).strftime('%Y-%m-%d')
+            count = 0
+            if rtdb_ref:
+                data = rtdb_ref.child(str(user_id)).get()
+                if data and data.get('last_reset_date') == today_str:
+                    count = data.get('daily_count', 0)
+            remaining = max(0, DAILY_LIMIT - count)
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"📊 **ស្ថានភាពការប្រើប័របស់ថ្ង័នេៀ**\n\n"
+                     f"✅ បានប្រើ៖ **{count}/{DAILY_LIMIT}** ដង\n"
+                     f"🔋 នៅសល់៖ **{remaining}** ដង\n\n"
+                     f"🔄 កូតានឹង Reset ឥប័នវិញនៅក្នុងទិនថ្ង័នៅ។",
+                parse_mode="Markdown"
+            )
+            return
+        elif cmd == '/topup':
+            await bot.send_message(
+                chat_id=chat_id,
+                text="💎 **Upgrade to Premium**\n\n"
+                     "🆓 Free Tier: ១០ សារ/ថ្ង័\n"
+                     "⭐ Premium: សារគ្មានដែន\n\n"
+                     "📩 តំនាកតាមអ្នកគ្រប់គ្រង: @YourAdminHandle",
+                parse_mode="Markdown"
+            )
+            return
+        else:
+            await bot.send_message(chat_id=chat_id, text="❓ ពាក័បញ្ជានេៀមិនត្រូវបានគាំត្រទេ។ សាកល្បង /start")
+            return
+
+    # 1. Limit Check (only for real AI requests)
     if not check_and_update_limit(user_id):
         await bot.send_message(
             chat_id=chat_id, 
-            text="🚫 **លើសកំណត់ប្រចាំថ្ងៃ!**\nអ្នកបានប្រើប្រាស់អស់កំណត់ (១០ ដង/ថ្ងៃ) សម្រាប់ថ្ងៃនេះហើយ (Free Tier)។",
+            text="🚫 **លើសកំណត់ប្រចាំថ្ង័!**\nអ្នកបានប្រើប័រអស់កំណត់ (១០ ដង/ថ្ង័) សម្រាប់ថ្ង័នេៀេលបហឹយ (Free Tier)។\n\n💡 ប្រើ /topup ដើមបី Upgrade!",
             parse_mode="Markdown"
         )
         return
