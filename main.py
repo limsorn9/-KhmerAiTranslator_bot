@@ -313,7 +313,7 @@ async def handle_update(update: Update):
             await file_obj.download_to_drive(file_to_delete)
             
             res = await process_with_gemini_media(file_to_delete, is_voice=bool(msg.voice))
-            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ **លទ្ធផល៖**\n\n`{res}`", parse_mode="Markdown")
+            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
             
         else:
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text="❌ មិនគាំទ្រទម្រង់ឯកសារនេះទេ!")
@@ -325,7 +325,7 @@ async def handle_update(update: Update):
                 res = process_with_gemini_text(extracted_text)
             else:
                 res = translate_with_groq(extracted_text)
-            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ **លទ្ធផល៖**\n\n`{res}`", parse_mode="Markdown")
+            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
             
     except Exception as e:
         await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"❌ មានបញ្ហាប្រព័ន្ធ៖ {str(e)}")
