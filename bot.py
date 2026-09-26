@@ -7,6 +7,30 @@ import requests
 import edge_tts
 from groq import Groq
 import db
+from collections import defaultdict
+from datetime import datetime
+import pytz
+
+# ----------------- IN-MEMORY USAGE DB (Freemium) -----------------
+daily_usage_db = defaultdict(lambda: defaultdict(int))
+DAILY_FREE_LIMIT = 15
+
+def is_within_daily_limit(user_id: int) -> bool:
+    tz = pytz.timezone('Asia/Phnom_Penh')
+    today = datetime.now(tz).strftime('%Y-%m-%d')
+    
+    # Clean up older dates from memory to avoid leaks
+    keys_to_delete = [date for date in daily_usage_db.keys() if date != today]
+    for date in keys_to_delete:
+        del daily_usage_db[date]
+        
+    if daily_usage_db[today][user_id] >= DAILY_FREE_LIMIT:
+        return False
+        
+    daily_usage_db[today][user_id] += 1
+    return True
+# -----------------------------------------------------------------
+
 
 # កំណត់ Logging
 logging.basicConfig(
@@ -261,8 +285,23 @@ async def prompt_language_selection(update: Update, context: ContextTypes.DEFAUL
         return
 
     msg = update.message
+    user_id = msg.from_user.id
     
+    # ឆែកមើលលក្ខខណ្ឌប្រើប្រាស់ឥតគិតថ្លៃប្រចាំថ្ងៃ (Freemium: 15 messages)
+    if not is_within_daily_limit(user_id):
+        await msg.reply_text("🚫 **លើសកំណត់ប្រចាំថ្ងៃ!**\nអ្នកបានប្រើប្រាស់អស់ទំហំកំណត់ឥតគិតថ្លៃ (១៥ ដង/ថ្ងៃ) សម្រាប់ថ្ងៃនេះហើយ។ សូម **Upgrade to Premium** ដើម្បីប្រើប្រាស់ដោយគ្មានដែនកំណត់! 💎", parse_mode="Markdown")
+        return
+        
     extracted_text = None
+    
+    # ឆែកប្រវែងសំឡេង (Max 60 seconds)
+    if msg.voice and msg.voice.duration > 60:
+        await msg.reply_text("❌ សារសំឡេងរបស់អ្នកមានប្រវែងវែងជាង ៦០ វិនាទី! សូមផ្ញើជាសំឡេងខ្លីៗក្រោម ១ នាទី។")
+        return
+    if msg.audio and msg.audio.duration > 60:
+        await msg.reply_text("❌ សារសំឡេងរបស់អ្នកមានប្រវែងវែងជាង ៦០ វិនាទី! សូមផ្ញើជាសំឡេងខ្លីៗក្រោម ១ នាទី។")
+        return
+
     if msg.text:
         extracted_text = msg.text
     elif msg.photo or msg.document:
@@ -379,6 +418,37 @@ def transcribe_with_google_free(file_path):
         return None, f"❌ បញ្ហាប្រព័ន្ធ Google ស្តាប់សម្លេង៖ {str(e)}"
 
 
+def transcribe_with_gemini_audio(file_path):
+    import os
+    import logging
+    import google.generativeai as genai
+    try:
+        GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+        if not GEMINI_API_KEY:
+            return None, "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
+            
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Upload the audio file to Gemini File API
+        audio_file = genai.upload_file(path=file_path)
+        
+        prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary or explanations."
+        
+        response = model.generate_content([prompt, audio_file])
+        text = response.text.strip()
+        
+        # Clean up the file from Gemini servers
+        try:
+            genai.delete_file(audio_file.name)
+        except Exception as cleanup_err:
+            logging.warning(f"Failed to delete Gemini file {audio_file.name}: {cleanup_err}")
+            
+        return text, None
+    except Exception as e:
+        logging.error(f"Gemini Audio STT Error: {e}")
+        return None, f"❌ បញ្ហាប្រព័ន្ធ Gemini ស្តាប់សម្លេង៖ {str(e)}"
+
 async def process_text_action(msg, processing_msg, target_lang, voice_id):
     try:
         translated_text = await asyncio.to_thread(translate_text_sync, msg.text, target_lang)
@@ -422,8 +492,8 @@ async def process_media_action(msg, processing_msg, target_lang, voice_id):
     try:
         await file_obj.download_to_drive(input_path)
         
-        # ១. ស្តាប់សំឡេងដោយប្រើប្រាស់ Free SpeechRecognition
-        original_text, error_msg = await asyncio.to_thread(transcribe_with_google_free, input_path)
+        # ១. ស្តាប់សំឡេងដោយប្រើប្រាស់ Gemini Audio API តាមរយៈ File API
+        original_text, error_msg = await asyncio.to_thread(transcribe_with_gemini_audio, input_path)
         
         if error_msg:
             await processing_msg.edit_text(error_msg)
