@@ -3,6 +3,7 @@ import re
 import json
 import asyncio
 from gtts import gTTS
+from deep_translator import GoogleTranslator
 import subprocess
 from datetime import datetime
 import pytz
@@ -141,47 +142,47 @@ def is_khmer_text(text: str) -> bool:
     return bool(re.search(r'[\u1780-\u17FF]', text))
 
 def translate_with_groq(text: str) -> str:
-    # Try up to 3 times (with different keys) if quota exceeded
+    try:
+        return GoogleTranslator(source='auto', target='km').translate(text)
+    except Exception as e:
+        return f"❌ បរាជ័យ Google Translate៖ {str(e)}"
+
+def process_with_gemini_text(text: str) -> str:
+    try:
+        return GoogleTranslator(source='auto', target='en').translate(text)
+    except Exception as e:
+        return f"❌ បរាជ័យ Google Translate៖ {str(e)}"
+
+
+async def process_audio_smart(file_path: str) -> str:
+    # Use Groq Whisper to detect and transcribe. If Khmer, delegate to Gemini!
     for _ in range(3):
         try:
             api_key = get_next_groq_key()
             if not api_key:
-                return "❌ គ្មាន GROQ_API_KEY នៅក្នុងប្រព័ន្ធ!"
-                
+                return "❌ គ្មាន GROQ_API_KEY!"
             groq_client = Groq(api_key=api_key)
-            prompt = f"You are a professional translator. Translate the following text to Khmer (km). Output ONLY the translated text, nothing else:\n\n{text}"
-            response = groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.3
-            )
-            return response.choices[0].message.content.strip()
+            with open(file_path, "rb") as f:
+                transcription = groq_client.audio.transcriptions.create(
+                    file=(os.path.basename(file_path), f.read()),
+                    model="whisper-large-v3-turbo",
+                    response_format="verbose_json"
+                )
+            
+            # User strictly requested Gemini for Khmer only
+            lang = getattr(transcription, 'language', 'en')
+            if lang in ['km', 'khmer']:
+                return await process_with_gemini_media(file_path, is_voice=True)
+            else:
+                # If non-Khmer, Groq returns transcription text. Let's translate it to Khmer
+                en_text = transcription.text
+                return GoogleTranslator(source='auto', target='km').translate(en_text)
+                
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
-                continue # Retry with next key
-            return f"❌ បរាជ័យ Groq៖ {str(e)}"
-    return "⚠️ Groq គណនីទាំងអស់កំពុងអស់កូតា (Free Tier Limit)។ សូមរង់ចាំបន្តិចសិន!"
-
-def process_with_gemini_text(text: str) -> str:
-    for model_name in GEMINI_MODELS:
-        for _ in range(2):
-            try:
-                api_key = get_next_gemini_key()
-                if not api_key:
-                    return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
-                client = google_genai.Client(api_key=api_key)
-                prompt = f"You are a professional translator. Translate the following text to English (en). Output ONLY the translated text, nothing else:\n\n{text}"
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=prompt
-                )
-                return response.text.strip()
-            except Exception as e:
-                err = str(e)
-                if "429" in err or "quota" in err.lower() or "503" in err or "unavailable" in err.lower():
-                    continue  # Try next key or next model
-                return f"❌ បរាជ័យ Gemini៖ {err}"
-    return "⚠️ Gemini Models ទាំងអស់កំពុងរវល់ (503/429)។ សូមរង់ចាំបន្តិចសិន!"
+                continue
+            return f"❌ បរាជ័យ Groq Audio៖ {str(e)}"
+    return "⚠️ Groq Audio កំពុងអស់កូតា។"
 
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
     if is_voice:
@@ -351,7 +352,10 @@ async def handle_update(update: Update):
                     print(f"FFmpeg Error: {e}")
                     final_file = file_to_delete # fallback to original video
             
-            res = await process_with_gemini_media(final_file, is_voice=is_audio)
+            if is_audio:
+                res = await process_audio_smart(final_file)
+            else:
+                res = await process_with_gemini_media(final_file, is_voice=False)
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
             
             # Generate TTS if it was a voice/video translation
