@@ -52,7 +52,7 @@ if not firebase_admin._apps:
 rtdb_ref = rtdb.reference('users') if firebase_admin._apps else None
 
 DAILY_LIMIT = 10
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-3.5-flash"
 
 # Super Admin IDs - no quota limit (get your ID from @userinfobot on Telegram)
 SUPER_ADMINS = set(
