@@ -378,55 +378,36 @@ def transcribe_with_google_free(file_path):
         logging.error(f"Google Speech Recognition Error: {e}")
         return None, f"❌ បញ្ហាប្រព័ន្ធ Google ស្តាប់សម្លេង៖ {str(e)}"
 
-def transcribe_with_gcp_speech(file_path):
+def transcribe_with_gemini_audio(file_path):
+    import os
+    import logging
+    import google.generativeai as genai
     try:
-        from google.cloud import speech
-        from pydub import AudioSegment
-        import io
-        import logging
-        
-        # Check if credentials exist in environment
-        creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON") or os.environ.get("FIREBASE_CREDENTIALS")
-        if not creds_json and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
-            return None, "❌ សូមកំណត់ GOOGLE_APPLICATION_CREDENTIALS (ជា File JSON) នៅក្នុង Render ជាមុនសិន ទើបអាចប្រើ Google Speech បាន!"
+        GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+        if not GEMINI_API_KEY:
+            return None, "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
             
-        # Convert audio to mono, 16000Hz WAV format for optimal accuracy with GCP
-        audio = AudioSegment.from_file(file_path)
-        audio = audio.set_channels(1).set_frame_rate(16000)
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-1.5-flash')
         
-        wav_io = io.BytesIO()
-        audio.export(wav_io, format="wav")
-        content = wav_io.getvalue()
+        # Upload the audio file to Gemini File API
+        audio_file = genai.upload_file(path=file_path)
         
-        # Otherwise it auto-detects from GOOGLE_APPLICATION_CREDENTIALS path
-        if creds_json:
-            import json
-            from google.oauth2 import service_account
-            credentials = service_account.Credentials.from_service_account_info(json.loads(creds_json))
-            client = speech.SpeechClient(credentials=credentials)
-        else:
-            client = speech.SpeechClient()
+        prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary or explanations."
+        
+        response = model.generate_content([prompt, audio_file])
+        text = response.text.strip()
+        
+        # Clean up the file from Gemini servers
+        try:
+            genai.delete_file(audio_file.name)
+        except Exception as cleanup_err:
+            logging.warning(f"Failed to delete Gemini file {audio_file.name}: {cleanup_err}")
             
-        audio_file = speech.RecognitionAudio(content=content)
-        
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=16000,
-            language_code="km-KH",
-            enable_automatic_punctuation=True,
-        )
-        
-        response = client.recognize(config=config, audio=audio_file)
-        
-        text = ""
-        for result in response.results:
-            text += result.alternatives[0].transcript
-            
-        return text.strip(), None
+        return text, None
     except Exception as e:
-        import logging
-        logging.error(f"GCP Speech API Error: {e}")
-        return None, f"❌ បញ្ហាប្រព័ន្ធ Google Speech API៖ {str(e)}"
+        logging.error(f"Gemini Audio STT Error: {e}")
+        return None, f"❌ បញ្ហាប្រព័ន្ធ Gemini ស្តាប់សម្លេង៖ {str(e)}"
 
 async def process_text_action(msg, processing_msg, target_lang, voice_id):
     try:
@@ -471,8 +452,8 @@ async def process_media_action(msg, processing_msg, target_lang, voice_id):
     try:
         await file_obj.download_to_drive(input_path)
         
-        # ១. ស្តាប់សំឡេងដោយប្រើប្រាស់ Google Cloud Speech API សម្រាប់អក្សរខ្មែរ
-        original_text, error_msg = await asyncio.to_thread(transcribe_with_gcp_speech, input_path)
+        # ១. ស្តាប់សំឡេងដោយប្រើប្រាស់ Gemini Audio API តាមរយៈ File API
+        original_text, error_msg = await asyncio.to_thread(transcribe_with_gemini_audio, input_path)
         
         if error_msg:
             await processing_msg.edit_text(error_msg)

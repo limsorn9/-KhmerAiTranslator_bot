@@ -11,4 +11,3 @@ pytz
 SpeechRecognition
 pydub
 google-generativeai
-google-cloud-speech
