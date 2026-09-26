@@ -42,3 +42,32 @@ def extract_text(file_path):
     except Exception as e:
         logging.error(f"Error extracting text from {file_path}: {e}")
         return None, f"❌ បរាជ័យក្នុងការអានឯកសារ៖ {str(e)}"
+
+async def process_document(msg, bot):
+    import os
+    import asyncio
+    
+    file_obj = None
+    if msg.photo:
+        file_obj = await bot.get_file(msg.photo[-1].file_id)
+        ext = ".jpg"
+    elif msg.document:
+        file_obj = await bot.get_file(msg.document.file_id)
+        ext = os.path.splitext(msg.document.file_name)[1]
+    else:
+        return None, "❌ មិនមានឯកសារទេ"
+
+    temp_path = f"temp_doc_{msg.message_id}{ext}"
+    try:
+        await file_obj.download_to_drive(temp_path)
+        # ត្រូវប្រើ asyncio.to_thread ព្រោះ extract_text គឺមានដំណើរការយឺត (blocking)
+        ex_txt, err = await asyncio.to_thread(extract_text, temp_path)
+        return ex_txt, err
+    except Exception as e:
+        return None, f"❌ កំហុសពេលទាញយកឯកសារ៖ {str(e)}"
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except:
+                pass
