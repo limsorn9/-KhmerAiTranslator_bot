@@ -236,9 +236,13 @@ def translate_to_multi(text: str):
 # ----------------- AUDIO PROCESSING -----------------
 async def transcribe_audio_file(file_path: str) -> str:
     """
-    Groq Whisper listens to ALL languages.
-    If Khmer detected -> Gemini transcribes. Returns raw text.
+    1. Gemini listens first. If Khmer -> transcribes.
+    2. If NOT_KHMER -> Groq Whisper transcribes.
     """
+    gemini_res = await process_with_gemini_media(file_path, is_voice=True)
+    if gemini_res and "NOT_KHMER" not in gemini_res and not gemini_res.startswith("❌") and not gemini_res.startswith("⚠️"):
+        return gemini_res
+
     for _ in range(3):
         try:
             api_key = get_next_groq_key()
@@ -249,15 +253,9 @@ async def transcribe_audio_file(file_path: str) -> str:
                 transcription = groq_client.audio.transcriptions.create(
                     file=(os.path.basename(file_path), f.read()),
                     model="whisper-large-v3-turbo",
-                    prompt="សួស្តី នេះគឺជាភាសាខ្មែរ។ Hello this is English. Xin chào.",
                     response_format="verbose_json"
                 )
-            lang = getattr(transcription, 'language', 'en')
-            if lang in ['km', 'khmer']:
-                khmer_text = await process_with_gemini_media(file_path, is_voice=True)
-                return khmer_text
-            else:
-                return transcription.text
+            return transcription.text
         except Exception as e:
             print(f"Groq API error on attempt: {e}")
             continue
@@ -278,9 +276,10 @@ def extract_image_text_local(file_path: str) -> str:
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
     if is_voice:
         prompt = (
-            "Listen to this audio carefully and transcribe all the speech you hear into text. "
-            "If it is in Khmer, write it in Khmer script. "
-            "Output ONLY the transcribed text exactly as spoken, with no additional commentary."
+            "Listen to this audio carefully. If the spoken language is Khmer (Cambodian), "
+            "transcribe it into Khmer text exactly as spoken. "
+            "If the spoken language is NOT Khmer (e.g., English, Thai, Vietnamese, etc.), "
+            "you MUST output exactly the word 'NOT_KHMER' and nothing else."
         )
     else:
         local_text = extract_image_text_local(file_path)
