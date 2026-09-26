@@ -38,9 +38,14 @@ def extract_text(file_path):
                         img
                     ])
                     text = response.text.strip()
+                    if not text:
+                        return None, "❌ មិនមានអក្សរនៅក្នុងឯកសារនេះទេ! (Gemini)"
+                    return text, None
             except Exception as gemini_e:
                 logging.warning(f"Gemini Vision failed: {gemini_e}")
-
+                if "API key not valid" in str(gemini_e):
+                    return None, "❌ API Key របស់ Gemini មិនត្រឹមត្រូវទេ! សូមពិនិត្យមើល GEMINI_API_KEY នៅក្នុង Render ឡើងវិញ។"
+                return None, f"❌ បរាជ័យក្នុងការអានដោយ Gemini៖ {gemini_e}"
             # 2. បើ Gemini បរាជ័យ (ឬគ្មាន Key) សាកល្បងប្រើ Groq Vision API
             if not text:
                 try:
