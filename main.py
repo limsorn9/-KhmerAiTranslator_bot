@@ -304,7 +304,7 @@ async def show_language_selector(chat_id: int, reply_msg_id: int,
     if row:
         buttons.append(row)
     buttons.append([InlineKeyboardButton(
-        "\U0001f310 \u1794\u1780\u1794\u17d2\u179a\u17be\u1782\u17d2\u179a\u1794\u17cb\u1797\u17b6\u179f\u17b6",
+        BTN_TRANSLATE_ALL,
         callback_data="translate_all"
     )])
     keyboard = InlineKeyboardMarkup(buttons)
@@ -312,9 +312,9 @@ async def show_language_selector(chat_id: int, reply_msg_id: int,
     await bot.send_message(
         chat_id=chat_id,
         text=(
-            "\U0001f4c4 \u17a2\u1780\u17d2\u179f\u179a\u178f\u17b9\u1780\u1785\u17d2\u1793\u17b6\u1789\u17d6\n\n"
-            f"{preview}\n\n"
-            "\u2753 \u179f\u17bc\u1798\u1787\u17d2\u179a\u17be\u179f\u179a\u17be\u179f\u1797\u17b6\u179f\u17b6\u178f\u17b9\u1780\u1785\u1784\u17cb\u1794\u1780\u1794\u17d2\u179a\u17be \u2193"
+            SELECTOR_HEADER +
+            f"{preview}" +
+            SELECTOR_FOOTER
         ),
         reply_to_message_id=reply_msg_id,
         reply_markup=keyboard
@@ -336,15 +336,12 @@ async def handle_update(update: Update):
 
         text = PENDING_TRANSLATIONS.get(user_id)
         if not text:
-            await query.edit_message_text(
-                "\u26a0\ufe0f \u17a2\u178f\u17d2\u1790\u1794\u178f\u1795\u17bb\u178f\u17a2\u17b6\u1799\u17bb\u17d4 "
-                "\u179f\u17bc\u1798\u1795\u17d2\u1789\u17be\u179a\u179f\u17b6\u179a\u1790\u17d2\u1798\u17b8\u1798\u17d2\u178f\u1784\u178f\u17be\u178f\u17d4"
-            )
+            await query.edit_message_text(MSG_EXPIRED)
             return
 
         status = await bot.send_message(
             chat_id=chat_id,
-            text="\u23f3 \u1780\u17c6\u1796\u17bb\u1784\u1794\u1780\u1794\u17d2\u179a\u17be..."
+            text=MSG_TRANSLATING
         )
 
         if data == "translate_all":
@@ -352,7 +349,7 @@ async def handle_update(update: Update):
             await bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=status.message_id,
-                text=f"\u2705 \u179b\u1791\u17d2\u1792\u1795\u179b\u17d6\n\n{res_str}"
+                text=f"{MSG_RESULT}\n\n{res_str}"
             )
             if translations_dict:
                 await send_tts(translations_dict, chat_id, status.message_id)
@@ -365,15 +362,14 @@ async def handle_update(update: Update):
                     await bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=status.message_id,
-                        text=f"\u2705 {name}:\n\n{trans}"
+                        text=f"✅ {name}:\n\n{trans}"
                     )
                     await send_tts({voice: trans}, chat_id, status.message_id)
                 else:
                     await bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=status.message_id,
-                        text=f"\u274c \u1794\u179a\u17b6\u1787\u17d0\u1799\u1794\u1780\u1794\u17d2\u179a\u17be {name}! "
-                             f"\u179f\u17bc\u1798\u1795\u17d2\u179a\u17d0\u1799\u17a2\u17b6\u1793\u1798\u17d2\u178f\u1784\u178f\u17be\u178f\u17d4"
+                        text=f"❌ បរាជ័យបកប្រែ {name}! {MSG_TRANSLATE_FAIL}"
                     )
 
         PENDING_TRANSLATIONS.pop(user_id, None)
