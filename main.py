@@ -467,21 +467,25 @@ async def handle_update(update: Update):
             return
 
     # Quota check (skip for admins)
-    duration = 0
-    if msg.voice: duration = msg.voice.duration
-    elif msg.video: duration = msg.video.duration
-    elif msg.video_note: duration = msg.video_note.duration
-    
     import math
-    cost = max(1, math.ceil(duration / 300.0))
+    cost = 0
+    if msg.voice or msg.video or msg.video_note:
+        duration = 0
+        if msg.voice: duration = msg.voice.duration
+        elif msg.video: duration = msg.video.duration
+        elif msg.video_note: duration = msg.video_note.duration
+        cost = max(1, math.ceil(duration / 300.0))
+    elif msg.photo:
+        cost = 1
 
     is_admin = user_id in SUPER_ADMINS
-    if not is_admin and not check_and_update_limit(user_id, required_cost=cost):
-        if cost > 1:
-            await bot.send_message(chat_id=chat_id, text=f"🚫 ឯកសារនេះមានប្រវែងវែង (គិតជា {cost} កាក់)។ អ្នកមិនមានកាក់គ្រប់គ្រាន់ទេ! សូម /topup")
-        else:
-            await bot.send_message(chat_id=chat_id, text=MSG_QUOTA_EXCEEDED)
-        return
+    if cost > 0:
+        if not is_admin and not check_and_update_limit(user_id, required_cost=cost):
+            if cost > 1:
+                await bot.send_message(chat_id=chat_id, text=f"🚫 ឯកសារនេះមានប្រវែងវែង (គិតជា {cost} កាក់)។ អ្នកមិនមានកាក់គ្រប់គ្រាន់ទេ! សូម /topup")
+            else:
+                await bot.send_message(chat_id=chat_id, text=MSG_QUOTA_EXCEEDED)
+            return
 
     status_msg = await bot.send_message(
         chat_id=chat_id,
