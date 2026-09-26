@@ -23,7 +23,8 @@ from constants import (
     MSG_FORMAT_UNSUPPORTED, MSG_IMAGE_NO_TEXT, MSG_GROQ_QUOTA,
     MSG_GEMINI_OVERLOAD, MSG_NO_GROQ_KEY, MSG_NO_GEMINI_KEY,
     MSG_EXPIRED, MSG_RESULT, MSG_TRANSLATE_FAIL,
-    BTN_TRANSLATE_ALL, SELECTOR_HEADER, SELECTOR_FOOTER, msg_mycoin
+    BTN_TRANSLATE_ALL, SELECTOR_HEADER, SELECTOR_FOOTER, msg_mycoin,
+    MSG_ID, MSG_ADMIN_ADD, MSG_ADMIN_REMOVE, MSG_ADMIN_CHECK, MSG_NOT_ADMIN, MSG_INVALID_FORMAT
 )
 
 from contextlib import asynccontextmanager
@@ -107,24 +108,26 @@ def check_and_update_limit(user_id: int) -> bool:
     tz = pytz.timezone('Asia/Phnom_Penh')
     today_str = datetime.now(tz).strftime('%Y-%m-%d')
     user_node = rtdb_ref.child(str(user_id))
-    data = user_node.get()
-    if data:
-        if data.get('last_reset_date') == today_str:
-            count = data.get('daily_count', 0)
-            if count >= DAILY_LIMIT:
-                return False
-            user_node.update({'daily_count': count + 1})
-            return True
-        else:
-            user_node.update({'daily_count': 1, 'last_reset_date': today_str})
-            return True
+    data = user_node.get() or {}
+    
+    if data.get('last_reset_date') == today_str:
+        count = data.get('daily_count', 0)
     else:
-        user_node.set({
-            'daily_count': 1,
-            'last_reset_date': today_str,
-            'created_at': datetime.now(tz).isoformat()
-        })
+        count = 0
+        
+    # Free tier logic
+    if count < DAILY_LIMIT:
+        user_node.update({'daily_count': count + 1, 'last_reset_date': today_str})
         return True
+        
+    # Premium Wallet Logic (deduct $0.01 per request)
+    balance = data.get('balance', 0.0)
+    cost = 0.01
+    if balance >= cost:
+        user_node.update({'balance': round(balance - cost, 2)})
+        return True
+        
+    return False
 
 # ----------------- PENDING TEXT STORE -----------------
 PENDING_TRANSLATIONS = {}
@@ -389,21 +392,69 @@ async def handle_update(update: Update):
         if cmd == '/start':
             await bot.send_message(chat_id=chat_id, text=MSG_START)
             return
+            
+        elif cmd == '/id':
+            await bot.send_message(chat_id=chat_id, text=MSG_ID.format(user_id))
+            return
 
         elif cmd == '/mycoin':
             tz = pytz.timezone('Asia/Phnom_Penh')
             today_str = datetime.now(tz).strftime('%Y-%m-%d')
             count = 0
+            balance = 0.0
             if rtdb_ref:
-                data = rtdb_ref.child(str(user_id)).get()
-                if data and data.get('last_reset_date') == today_str:
+                data = rtdb_ref.child(str(user_id)).get() or {}
+                if data.get('last_reset_date') == today_str:
                     count = data.get('daily_count', 0)
+                balance = data.get('balance', 0.0)
             remaining = max(0, DAILY_LIMIT - count)
-            await bot.send_message(chat_id=chat_id, text=msg_mycoin(count, DAILY_LIMIT, remaining))
+            await bot.send_message(chat_id=chat_id, text=msg_mycoin(count, DAILY_LIMIT, remaining, round(balance, 2)))
             return
 
         elif cmd == '/topup':
+            # Send the QR text instruction (and QR Image if available, for now text)
             await bot.send_message(chat_id=chat_id, text=MSG_TOPUP)
+            return
+            
+        elif cmd in ['/addmoney', '/removemoney', '/checkmoney']:
+            if user_id not in SUPER_ADMINS:
+                await bot.send_message(chat_id=chat_id, text=MSG_NOT_ADMIN)
+                return
+                
+            parts = msg.text.split()
+            
+            if cmd == '/checkmoney':
+                if len(parts) != 2:
+                    await bot.send_message(chat_id=chat_id, text=MSG_INVALID_FORMAT.format(format="/checkmoney [ID]"))
+                    return
+                target_id = parts[1]
+                target_node = rtdb_ref.child(str(target_id))
+                data = target_node.get() or {}
+                bal = data.get('balance', 0.0)
+                await bot.send_message(chat_id=chat_id, text=MSG_ADMIN_CHECK.format(user_id=target_id, balance=round(bal, 2)))
+                return
+                
+            if len(parts) != 3:
+                await bot.send_message(chat_id=chat_id, text=MSG_INVALID_FORMAT.format(format=f"{cmd} [ID] [Amount]"))
+                return
+                
+            try:
+                target_id = parts[1]
+                amount = float(parts[2])
+                target_node = rtdb_ref.child(str(target_id))
+                data = target_node.get() or {}
+                current_bal = data.get('balance', 0.0)
+                
+                if cmd == '/addmoney':
+                    new_bal = current_bal + amount
+                    target_node.update({'balance': round(new_bal, 2)})
+                    await bot.send_message(chat_id=chat_id, text=MSG_ADMIN_ADD.format(amount=amount, user_id=target_id, balance=round(new_bal, 2)))
+                else: # /removemoney
+                    new_bal = max(0.0, current_bal - amount)
+                    target_node.update({'balance': round(new_bal, 2)})
+                    await bot.send_message(chat_id=chat_id, text=MSG_ADMIN_REMOVE.format(amount=amount, user_id=target_id, balance=round(new_bal, 2)))
+            except ValueError:
+                await bot.send_message(chat_id=chat_id, text="❌ Amount ត្រូវតែជាលេខ!")
             return
 
         else:

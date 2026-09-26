@@ -15,11 +15,19 @@ MSG_START = (
 )
 
 MSG_TOPUP = (
-    "💎 Upgrade to Premium\n\n"
+    "💎 អាប់ដេតទៅ Premium (បញ្ចូលប្រាក់)\n\n"
     "🆓 Free Tier: ១០ ដង/ថ្ងៃ\n"
-    "⭐ Premium: ប្រើបានគ្មានដែន\n\n"
-    "📩 ទំនាក់ទំនងអ្នកគ្រប់គ្រង: @YourAdminHandle"
+    "⭐ Premium: ១ សារ = ០.០១$ (ឧទាហរណ៍)\n\n"
+    "📲 សូមស្កេន QR Code ខាងក្រោមដើម្បីបង់ប្រាក់ រួចផ្ញើវិក្កយបត្រ (វិក័យប័ត្រ) និង /id របស់អ្នកទៅកាន់ Admin @YourAdminHandle ដើម្បីបញ្ចូលទឹកប្រាក់។"
 )
+
+MSG_ID = "🔑 Telegram ID របស់អ្នកគឺ: `{}`"
+
+MSG_ADMIN_ADD = "✅ បានបញ្ចូលទឹកប្រាក់ចំនួន {amount}$ ទៅកាន់ ID {user_id} ដោយជោគជ័យ។ ទឹកប្រាក់សរុប: {balance}$"
+MSG_ADMIN_REMOVE = "✅ បានដកទឹកប្រាក់ចំនួន {amount}$ ពី ID {user_id} ដោយជោគជ័យ។ ទឹកប្រាក់នៅសល់: {balance}$"
+MSG_ADMIN_CHECK = "👤 ទឹកប្រាក់របស់ ID {user_id} គឺ: {balance}$"
+MSG_NOT_ADMIN = "❌ អ្នកមិនមានសិទ្ធិប្រើប្រាស់បញ្ជានេះទេ! (សម្រាប់តែ Admin)"
+MSG_INVALID_FORMAT = "❌ ទម្រង់ខុស! សូមប្រើ: {format}"
 
 MSG_UNKNOWN_CMD = "❓ ពាក្យបញ្ជានេះមិនត្រូវបានគាំទ្រទេ។ សូមសាកល្បង /start"
 
@@ -46,10 +54,11 @@ BTN_TRANSLATE_ALL = "🌐 បកប្រែគ្រប់ភាសា"
 SELECTOR_HEADER = "📄 អក្សរដែលបានទាញចេញ:\n\n"
 SELECTOR_FOOTER = "\n\n❓ សូមជ្រើសរើសភាសាដែលចង់បកប្រែ ↓"
 
-def msg_mycoin(count: int, daily_limit: int, remaining: int) -> str:
+def msg_mycoin(count: int, daily_limit: int, remaining: int, balance: float) -> str:
     return (
-        f"📊 ស្ថានភាពប្រចាំថ្ងៃ\n\n"
-        f"✅ បានប្រើ: {count}/{daily_limit} ដង\n"
-        f"🔋 នៅសល់: {remaining} ដង\n\n"
-        f"🔄 កូតានឹង Reset ឡើងវិញនៅថ្ងៃស្អែក។"
+        f"📊 ស្ថានភាពគណនីរបស់អ្នក\n\n"
+        f"✅ ប្រើប្រាស់ Free ថ្ងៃនេះ: {count}/{daily_limit} ដង\n"
+        f"🔋 Free នៅសល់: {remaining} ដង\n\n"
+        f"💰 ទឹកប្រាក់ Premium (Wallet): {balance}$\n\n"
+        f"🔄 កូតា Free នឹង Reset ឡើងវិញនៅថ្ងៃស្អែក។"
     )
