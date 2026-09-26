@@ -348,35 +348,56 @@ def transcribe_with_google_free(file_path):
         logging.error(f"Google Speech Recognition Error: {e}")
         return None, f"❌ បញ្ហាប្រព័ន្ធ Google ស្តាប់សម្លេង៖ {str(e)}"
 
-def transcribe_with_groq(file_path):
-    if not groq_client:
-        return None, "❌ កូដ GROQ_API_KEY មិនទាន់បានដាក់ចូលក្នុង Render ទេ។ សូមបញ្ចូលវាសិន!"
-    
+def transcribe_with_gcp_speech(file_path):
     try:
-        with open(file_path, "rb") as file:
-            response = groq_client.audio.transcriptions.create(
-                file=(file_path, file.read()),
-                model="whisper-large-v3",
-                response_format="verbose_json",
-            )
-            
-        language = getattr(response, 'language', None) or (isinstance(response, dict) and response.get('language'))
-        text = getattr(response, 'text', None) or (isinstance(response, dict) and response.get('text'))
+        from google.cloud import speech
+        from pydub import AudioSegment
+        import io
+        import logging
         
-        if language == 'km':
-            # បើ Groq គិតថាជាភាសាខ្មែរ យើងបោះទៅឱ្យ Google ជាអ្នកស្តាប់វិញដើម្បីឱ្យច្បាស់
-            logging.info("Detected Khmer voice by Groq. Rerouting to Google Free STT...")
-            google_text, err = transcribe_with_google_free(file_path)
-            if google_text:
-                return google_text, None
-            # បើ Google ស្តាប់បរាជ័យ ប្រើរបស់ Groq ធម្មតា
-            return text, None
+        # Check if credentials exist in environment
+        if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") and not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON"):
+            return None, "❌ សូមកំណត់ GOOGLE_APPLICATION_CREDENTIALS (ជា File JSON) នៅក្នុង Render ជាមុនសិន ទើបអាចប្រើ Google Speech បាន!"
+            
+        # Convert audio to mono, 16000Hz WAV format for optimal accuracy with GCP
+        audio = AudioSegment.from_file(file_path)
+        audio = audio.set_channels(1).set_frame_rate(16000)
+        
+        wav_io = io.BytesIO()
+        audio.export(wav_io, format="wav")
+        content = wav_io.getvalue()
+        
+        # Optional: Initialize client using JSON string if provided in env
+        # Otherwise it auto-detects from GOOGLE_APPLICATION_CREDENTIALS path
+        creds_json = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        if creds_json:
+            import json
+            from google.oauth2 import service_account
+            credentials = service_account.Credentials.from_service_account_info(json.loads(creds_json))
+            client = speech.SpeechClient(credentials=credentials)
         else:
-            # ប្រើ Groq's transcription សម្រាប់ភាសាផ្សេងៗ
-            return text, None
+            client = speech.SpeechClient()
+            
+        audio_file = speech.RecognitionAudio(content=content)
+        
+        config = speech.RecognitionConfig(
+            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=16000,
+            language_code="km-KH",
+            enable_automatic_punctuation=True,
+        )
+        
+        response = client.recognize(config=config, audio=audio_file)
+        
+        text = ""
+        for result in response.results:
+            text += result.alternatives[0].transcript
+            
+        return text.strip(), None
     except Exception as e:
-        logging.error(f"Groq API Error: {e}")
-        return None, f"❌ បញ្ហាប្រព័ន្ធ Groq AI៖ {str(e)}"
+        import logging
+        logging.error(f"GCP Speech API Error: {e}")
+        return None, f"❌ បញ្ហាប្រព័ន្ធ Google Speech API៖ {str(e)}"
 
 async def process_text_action(msg, processing_msg, target_lang, voice_id):
     try:
@@ -421,8 +442,8 @@ async def process_media_action(msg, processing_msg, target_lang, voice_id):
     try:
         await file_obj.download_to_drive(input_path)
         
-        # ១. ស្តាប់សំឡេងដោយប្រើប្រាស់ Groq AI ស្វ័យប្រវត្តិ
-        original_text, error_msg = await asyncio.to_thread(transcribe_with_groq, input_path)
+        # ១. ស្តាប់សំឡេងដោយប្រើប្រាស់ Google Cloud Speech API សម្រាប់អក្សរខ្មែរ
+        original_text, error_msg = await asyncio.to_thread(transcribe_with_gcp_speech, input_path)
         
         if error_msg:
             await processing_msg.edit_text(error_msg)
