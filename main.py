@@ -1,4 +1,4 @@
-import os
+﻿import os
 import re
 import json
 import asyncio
@@ -6,7 +6,7 @@ import time
 import edge_tts
 import pytesseract
 from PIL import Image
-from deep_translator import GoogleTranslator
+import translators as ts
 import subprocess
 from datetime import datetime
 import pytz
@@ -180,11 +180,11 @@ def translate_one(text: str, lang_code: str):
     """Translate with up to 3 retries."""
     for attempt in range(3):
         try:
-            result = GoogleTranslator(source='auto', target=lang_code).translate(text)
+            result = ts.translate_text(text, translator='google', to_language=lang_code)
             if result and result.strip():
                 return result.strip()
         except Exception as e:
-            print(f"GoogleTranslate attempt {attempt+1} failed for {lang_code}: {e}")
+            print(f"translators attempt {attempt+1} failed for {lang_code}: {e}")
             time.sleep(0.5)
     return None
 
