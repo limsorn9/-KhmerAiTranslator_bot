@@ -52,7 +52,11 @@ if not firebase_admin._apps:
 rtdb_ref = rtdb.reference('users') if firebase_admin._apps else None
 
 DAILY_LIMIT = 10
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODELS = [
+    "gemini-3.5-flash",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+]
 
 # Super Admin IDs - no quota limit (get your ID from @userinfobot on Telegram)
 SUPER_ADMINS = set(
@@ -139,26 +143,33 @@ def translate_with_groq(text: str) -> str:
     return "⚠️ Groq គណនីទាំងអស់កំពុងអស់កូតា (Free Tier Limit)។ សូមរង់ចាំបន្តិចសិន!"
 
 def process_with_gemini_text(text: str) -> str:
-    for _ in range(3):
-        try:
-            api_key = get_next_gemini_key()
-            if not api_key:
-                return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
-            client = google_genai.Client(api_key=api_key)
-            prompt = f"You are a professional translator. Translate the following text to English (en). Output ONLY the translated text, nothing else:\n\n{text}"
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt
-            )
-            return response.text.strip()
-        except Exception as e:
-            if "429" in str(e) or "quota" in str(e).lower():
-                continue
-            return f"❌ បរាជ័យ Gemini៖ {str(e)}"
-    return "⚠️ Gemini គណនីទាំងអស់កំពុងអស់កូតា (Free Tier Quota)។ សូមរង់ចាំបន្តិចសិន!"
+    for model_name in GEMINI_MODELS:
+        for _ in range(2):
+            try:
+                api_key = get_next_gemini_key()
+                if not api_key:
+                    return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
+                client = google_genai.Client(api_key=api_key)
+                prompt = f"You are a professional translator. Translate the following text to English (en). Output ONLY the translated text, nothing else:\n\n{text}"
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt
+                )
+                return response.text.strip()
+            except Exception as e:
+                err = str(e)
+                if "429" in err or "quota" in err.lower() or "503" in err or "unavailable" in err.lower():
+                    continue  # Try next key or next model
+                return f"❌ បរាជ័យ Gemini៖ {err}"
+    return "⚠️ Gemini Models ទាំងអស់កំពុងរវល់ (503/429)។ សូមរង់ចាំបន្តិចសិន!"
 
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
-    for _ in range(3):
+    if is_voice:
+        prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary."
+    else:
+        prompt = "Please extract all text visible in this image. Output ONLY the text exactly as seen."
+
+    for model_name in GEMINI_MODELS:
         uploaded_file = None
         client = None
         try:
@@ -167,26 +178,23 @@ async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> s
                 return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
             client = google_genai.Client(api_key=api_key)
             uploaded_file = client.files.upload(file=file_path)
-            if is_voice:
-                prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary."
-            else:
-                prompt = "Please extract all text visible in this image. Output ONLY the text exactly as seen."
             response = client.models.generate_content(
-                model=GEMINI_MODEL,
+                model=model_name,
                 contents=[prompt, uploaded_file]
             )
             return response.text.strip()
         except Exception as e:
-            if "429" in str(e) or "quota" in str(e).lower():
-                continue
-            return f"❌ បរាជ័យក្នុងការវិភាគ File៖ {str(e)}"
+            err = str(e)
+            if "429" in err or "quota" in err.lower() or "503" in err or "unavailable" in err.lower():
+                continue  # Try next model
+            return f"❌ បរាជ័យក្នុងការវិភាគ File៖ {err}"
         finally:
             if uploaded_file and client:
                 try:
                     client.files.delete(name=uploaded_file.name)
                 except:
                     pass
-    return "⚠️ Gemini គណនីទាំងអស់កំពុងអស់កូតា (Free Tier Quota)។ សូមរង់ចាំបន្តិចសិន!"
+    return "⚠️ Gemini Models ទាំងអស់កំពុងរវល់ (503/429)។ សូមរង់ចាំបន្តិចសិន!"
 
 # ----------------- TELEGRAM LOGIC -----------------
 async def handle_update(update: Update):
