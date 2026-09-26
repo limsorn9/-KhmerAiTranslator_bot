@@ -303,24 +303,54 @@ async def prompt_language_selection(update: Update, context: ContextTypes.DEFAUL
         
     await msg.reply_text(prompt_text, reply_markup=keyboard, reply_to_message_id=msg.message_id, parse_mode="HTML")
 
+def translate_with_groq(text, target_lang):
+    import os
+    import logging
+    from groq import Groq
+    try:
+        groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+        prompt = f"You are a professional translator. Translate the following text to ISO 639-1 language code '{target_lang}'. Output ONLY the translated text, nothing else:\n\n{text}"
+        response = groq_client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logging.error(f"Groq Translation Error: {e}")
+        raise e
+
+def translate_with_gemini(text, target_lang):
+    import os
+    import logging
+    import google.generativeai as genai
+    try:
+        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        prompt = f"You are a professional translator. Translate the following text to ISO 639-1 language code '{target_lang}'. Output ONLY the translated text, nothing else:\n\n{text}"
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        logging.error(f"Gemini Translation Error: {e}")
+        raise e
+
+def is_khmer_text(text):
+    import re
+    # Check for Khmer characters using Unicode block \u1780-\u17FF
+    return bool(re.search(r'[\u1780-\u17FF]', text))
+
 def translate_text_sync(text, target_lang):
     try:
-        url = "https://translate.googleapis.com/translate_a/single"
-        params = {
-            "client": "gtx",
-            "sl": "auto",
-            "tl": target_lang,
-            "dt": "t",
-            "q": text
-        }
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        result = response.json()
-        translated = "".join([sentence[0] for sentence in result[0]])
-        return translated
+        # Rule A: If text contains Khmer characters, route to Gemini
+        if is_khmer_text(text):
+            return translate_with_gemini(text, target_lang)
+        # Rule B: If no Khmer characters, route to Groq
+        else:
+            return translate_with_groq(text, target_lang)
     except Exception as e:
+        import logging
         logging.error(f"Translation error: {e}")
-        return text
+        return f"❌ បរាជ័យក្នុងការបកប្រែ៖ {str(e)}"
 
 def transcribe_with_google_free(file_path):
     try:
