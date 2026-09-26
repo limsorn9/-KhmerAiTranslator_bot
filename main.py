@@ -145,17 +145,29 @@ async def send_tts(text: str, chat_id: int, reply_to_message_id: int):
 def is_khmer_text(text: str) -> bool:
     return bool(re.search(r'[\u1780-\u17FF]', text))
 
-def translate_with_groq(text: str) -> str:
-    try:
-        return GoogleTranslator(source='auto', target='km').translate(text)
-    except Exception as e:
-        return f"❌ បរាជ័យ Google Translate៖ {str(e)}"
+def translate_to_multi(text: str):
+    targets = {
+        'km': '🇰🇭 ខ្មែរ',
+        'en': '🇬🇧 អង់គ្លេស',
+        'th': '🇹🇭 ថៃ',
+        'vi': '🇻🇳 វៀតណាម',
+        'zh-CN': '🇨🇳 ចិន',
+        'ja': '🇯🇵 ជបុ៉ន',
+        'ko': '🇰🇷 កូរ៉េ'
+    }
+    res_str = ""
+    km_text = ""
+    for code, name in targets.items():
+        try:
+            trans = GoogleTranslator(source='auto', target=code).translate(text)
+            res_str += f"{name}:\n{trans}\n\n"
+            if code == 'km':
+                km_text = trans
+        except Exception:
+            res_str += f"{name}:\n❌ Error\n\n"
+    return res_str.strip(), km_text
 
-def process_with_gemini_text(text: str) -> str:
-    try:
-        return GoogleTranslator(source='auto', target='en').translate(text)
-    except Exception as e:
-        return f"❌ បរាជ័យ Google Translate៖ {str(e)}"
+
 
 
 async def process_audio_smart(file_path: str) -> str:
@@ -164,7 +176,7 @@ async def process_audio_smart(file_path: str) -> str:
         try:
             api_key = get_next_groq_key()
             if not api_key:
-                return "❌ គ្មាន GROQ_API_KEY!"
+                return "❌ គ្មាន GROQ_API_KEY!", ""
             groq_client = Groq(api_key=api_key)
             with open(file_path, "rb") as f:
                 transcription = groq_client.audio.transcriptions.create(
@@ -176,23 +188,19 @@ async def process_audio_smart(file_path: str) -> str:
             # User strictly requested Gemini for Khmer only
             lang = getattr(transcription, 'language', 'en')
             if lang in ['km', 'khmer']:
-                # Gemini listens to Khmer
                 khmer_text = await process_with_gemini_media(file_path, is_voice=True)
                 if khmer_text.startswith("❌") or khmer_text.startswith("⚠"):
-                    return khmer_text
-                # Rule: Khmer audio -> Translate to English
-                return GoogleTranslator(source='auto', target='en').translate(khmer_text)
+                    return khmer_text, ""
+                return translate_to_multi(khmer_text)
             else:
-                # Groq listens to Non-Khmer
                 non_khmer_text = transcription.text
-                # Rule: Non-Khmer audio -> Translate to Khmer
-                return GoogleTranslator(source='auto', target='km').translate(non_khmer_text)
+                return translate_to_multi(non_khmer_text)
                 
         except Exception as e:
             if "429" in str(e) or "quota" in str(e).lower():
                 continue
-            return f"❌ បរាជ័យ Groq Audio៖ {str(e)}"
-    return "⚠️ Groq Audio កំពុងអស់កូតា។"
+            return f"❌ បរាជ័យ Groq Audio៖ {str(e)}", ""
+    return "⚠️ Groq Audio កំពុងអស់កូតា។", ""
 
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
     if is_voice:
@@ -362,17 +370,21 @@ async def handle_update(update: Update):
                     print(f"FFmpeg Error: {e}")
                     final_file = file_to_delete # fallback to original video
             
+            km_text = ""
             if is_audio:
-                res = await process_audio_smart(final_file)
+                res, km_text = await process_audio_smart(final_file)
             else:
-                res = await process_with_gemini_media(final_file, is_voice=False)
+                img_res = await process_with_gemini_media(final_file, is_voice=False)
+                if img_res.startswith("❌") or img_res.startswith("⚠"):
+                    res = img_res
+                else:
+                    res, km_text = translate_to_multi(img_res)
+            
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
             
             # Generate TTS if it was a voice/video translation
-            if is_audio and not res.startswith("❌") and not res.startswith("⚠"):
-                # "បញ្ចេញសម្លេងភាសាខ្មែរ១គត់" - ONLY pronounce Khmer output
-                if is_khmer_text(res):
-                    await send_tts(res, chat_id, status_msg.message_id)
+            if is_audio and km_text and not res.startswith("❌") and not res.startswith("⚠"):
+                await send_tts(km_text, chat_id, status_msg.message_id)
             
             if final_file != file_to_delete and os.path.exists(final_file):
                 try: os.remove(final_file)
@@ -384,11 +396,8 @@ async def handle_update(update: Update):
 
         # D. IF WE HAVE TEXT (Direct or Extracted), APPLY HYBRID ROUTING
         if extracted_text:
-            if is_khmer_text(extracted_text):
-                res = process_with_gemini_text(extracted_text)
-            else:
-                res = translate_with_groq(extracted_text)
-            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res}")
+            res_str, km_text = translate_to_multi(extracted_text)
+            await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"✅ លទ្ធផល៖\n\n{res_str}")
             
     except Exception as e:
         await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=f"❌ មានបញ្ហាប្រព័ន្ធ៖ {str(e)}")
