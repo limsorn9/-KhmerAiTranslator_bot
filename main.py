@@ -249,6 +249,7 @@ async def transcribe_audio_file(file_path: str) -> str:
                 transcription = groq_client.audio.transcriptions.create(
                     file=(os.path.basename(file_path), f.read()),
                     model="whisper-large-v3-turbo",
+                    prompt="សួស្តី នេះគឺជាភាសាខ្មែរ។ Hello this is English. Xin chào.",
                     response_format="verbose_json"
                 )
             lang = getattr(transcription, 'language', 'en')
