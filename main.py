@@ -120,11 +120,11 @@ def check_and_update_limit(user_id: int) -> bool:
         user_node.update({'daily_count': count + 1, 'last_reset_date': today_str})
         return True
         
-    # Premium Wallet Logic (deduct $0.01 per request)
-    balance = data.get('balance', 0.0)
-    cost = 0.01
-    if balance >= cost:
-        user_node.update({'balance': round(balance - cost, 2)})
+    # Premium Wallet Logic (deduct 1 paid_coin per request)
+    paid_coins = data.get('paid_coins', 0)
+    cost = 1
+    if paid_coins >= cost:
+        user_node.update({'paid_coins': paid_coins - cost})
         return True
         
     return False
@@ -401,14 +401,14 @@ async def handle_update(update: Update):
             tz = pytz.timezone('Asia/Phnom_Penh')
             today_str = datetime.now(tz).strftime('%Y-%m-%d')
             count = 0
-            balance = 0.0
+            paid_coins = 0
             if rtdb_ref:
                 data = rtdb_ref.child(str(user_id)).get() or {}
                 if data.get('last_reset_date') == today_str:
                     count = data.get('daily_count', 0)
-                balance = data.get('balance', 0.0)
+                paid_coins = data.get('paid_coins', 0)
             remaining = max(0, DAILY_LIMIT - count)
-            await bot.send_message(chat_id=chat_id, text=msg_mycoin(count, DAILY_LIMIT, remaining, round(balance, 2)))
+            await bot.send_message(chat_id=chat_id, text=msg_mycoin(count, DAILY_LIMIT, remaining, paid_coins))
             return
 
         elif cmd == '/topup':
@@ -430,7 +430,7 @@ async def handle_update(update: Update):
                 target_id = parts[1]
                 target_node = rtdb_ref.child(str(target_id))
                 data = target_node.get() or {}
-                bal = data.get('balance', 0.0)
+                bal = data.get('paid_coins', 0)
                 await bot.send_message(chat_id=chat_id, text=MSG_ADMIN_CHECK.format(user_id=target_id, balance=round(bal, 2)))
                 return
                 
@@ -440,21 +440,21 @@ async def handle_update(update: Update):
                 
             try:
                 target_id = parts[1]
-                amount = float(parts[2])
+                amount = int(parts[2])
                 target_node = rtdb_ref.child(str(target_id))
                 data = target_node.get() or {}
-                current_bal = data.get('balance', 0.0)
+                current_bal = data.get('paid_coins', 0)
                 
                 if cmd == '/addmoney':
                     new_bal = current_bal + amount
-                    target_node.update({'balance': round(new_bal, 2)})
+                    target_node.update({'paid_coins': new_bal})
                     await bot.send_message(chat_id=chat_id, text=MSG_ADMIN_ADD.format(amount=amount, user_id=target_id, balance=round(new_bal, 2)))
                 else: # /removemoney
-                    new_bal = max(0.0, current_bal - amount)
-                    target_node.update({'balance': round(new_bal, 2)})
+                    new_bal = max(0, current_bal - amount)
+                    target_node.update({'paid_coins': new_bal})
                     await bot.send_message(chat_id=chat_id, text=MSG_ADMIN_REMOVE.format(amount=amount, user_id=target_id, balance=round(new_bal, 2)))
             except ValueError:
-                await bot.send_message(chat_id=chat_id, text="❌ Amount ត្រូវតែជាលេខ!")
+                await bot.send_message(chat_id=chat_id, text="❌ Amount ត្រូវតែជាលេខគត់ (ឧ. 10)!")
             return
 
         else:

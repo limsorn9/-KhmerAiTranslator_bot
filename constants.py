@@ -17,15 +17,15 @@ MSG_START = (
 MSG_TOPUP = (
     "💎 អាប់ដេតទៅ Premium (បញ្ចូលប្រាក់)\n\n"
     "🆓 Free Tier: ១០ ដង/ថ្ងៃ\n"
-    "⭐ Premium: ១ សារ = ០.០១$ (ឧទាហរណ៍)\n\n"
+    "⭐ Premium: ១ សារ = ១ កាក់ (Coin)\n\n"
     "📲 សូមស្កេន QR Code ខាងក្រោមដើម្បីបង់ប្រាក់ រួចផ្ញើវិក្កយបត្រ (វិក័យប័ត្រ) និង /id របស់អ្នកទៅកាន់ Admin @YourAdminHandle ដើម្បីបញ្ចូលទឹកប្រាក់។"
 )
 
 MSG_ID = "🔑 Telegram ID របស់អ្នកគឺ: `{}`"
 
-MSG_ADMIN_ADD = "✅ បានបញ្ចូលទឹកប្រាក់ចំនួន {amount}$ ទៅកាន់ ID {user_id} ដោយជោគជ័យ។ ទឹកប្រាក់សរុប: {balance}$"
-MSG_ADMIN_REMOVE = "✅ បានដកទឹកប្រាក់ចំនួន {amount}$ ពី ID {user_id} ដោយជោគជ័យ។ ទឹកប្រាក់នៅសល់: {balance}$"
-MSG_ADMIN_CHECK = "👤 ទឹកប្រាក់របស់ ID {user_id} គឺ: {balance}$"
+MSG_ADMIN_ADD = "✅ បានបញ្ចូលទឹកប្រាក់ចំនួន {amount} កាក់ ទៅកាន់ ID {user_id} ដោយជោគជ័យ។ ទឹកប្រាក់សរុប: {balance} កាក់"
+MSG_ADMIN_REMOVE = "✅ បានដកទឹកប្រាក់ចំនួន {amount} កាក់ ពី ID {user_id} ដោយជោគជ័យ។ ទឹកប្រាក់នៅសល់: {balance} កាក់"
+MSG_ADMIN_CHECK = "👤 ទឹកប្រាក់របស់ ID {user_id} គឺ: {balance} កាក់"
 MSG_NOT_ADMIN = "❌ អ្នកមិនមានសិទ្ធិប្រើប្រាស់បញ្ជានេះទេ! (សម្រាប់តែ Admin)"
 MSG_INVALID_FORMAT = "❌ ទម្រង់ខុស! សូមប្រើ: {format}"
 
@@ -59,6 +59,6 @@ def msg_mycoin(count: int, daily_limit: int, remaining: int, balance: float) -> 
         f"📊 ស្ថានភាពគណនីរបស់អ្នក\n\n"
         f"✅ ប្រើប្រាស់ Free ថ្ងៃនេះ: {count}/{daily_limit} ដង\n"
         f"🔋 Free នៅសល់: {remaining} ដង\n\n"
-        f"💰 ទឹកប្រាក់ Premium (Wallet): {balance}$\n\n"
+        f"💰 ទឹកប្រាក់ Premium (Wallet): {balance} កាក់\n\n"
         f"🔄 កូតា Free នឹង Reset ឡើងវិញនៅថ្ងៃស្អែក។"
     )
