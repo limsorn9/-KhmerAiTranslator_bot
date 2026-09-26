@@ -64,7 +64,7 @@ if not firebase_admin._apps:
 
 rtdb_ref = rtdb.reference('users') if firebase_admin._apps else None
 
-DAILY_LIMIT = 10
+DAILY_LIMIT = 5
 GEMINI_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.0-flash",
