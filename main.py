@@ -102,7 +102,7 @@ def get_next_groq_key():
     return key
 
 # ----------------- DB LOGIC -----------------
-def check_and_update_limit(user_id: int) -> bool:
+def check_and_update_limit(user_id: int, required_cost: int = 1) -> bool:
     if not rtdb_ref:
         return True
     tz = pytz.timezone('Asia/Phnom_Penh')
@@ -115,16 +115,21 @@ def check_and_update_limit(user_id: int) -> bool:
     else:
         count = 0
         
-    # Free tier logic
-    if count < DAILY_LIMIT:
-        user_node.update({'daily_count': count + 1, 'last_reset_date': today_str})
+    remaining_free = max(0, DAILY_LIMIT - count)
+    
+    if remaining_free >= required_cost:
+        user_node.update({'daily_count': count + required_cost, 'last_reset_date': today_str})
         return True
         
-    # Premium Wallet Logic (deduct 1 paid_coin per request)
+    cost_to_pay = required_cost - remaining_free
     paid_coins = data.get('paid_coins', 0)
-    cost = 1
-    if paid_coins >= cost:
-        user_node.update({'paid_coins': paid_coins - cost})
+    
+    if paid_coins >= cost_to_pay:
+        user_node.update({
+            'daily_count': count + remaining_free,
+            'last_reset_date': today_str,
+            'paid_coins': paid_coins - cost_to_pay
+        })
         return True
         
     return False
@@ -462,14 +467,25 @@ async def handle_update(update: Update):
             return
 
     # Quota check (skip for admins)
+    duration = 0
+    if msg.voice: duration = msg.voice.duration
+    elif msg.video: duration = msg.video.duration
+    elif msg.video_note: duration = msg.video_note.duration
+    
+    import math
+    cost = max(1, math.ceil(duration / 300.0))
+
     is_admin = user_id in SUPER_ADMINS
-    if not is_admin and not check_and_update_limit(user_id):
-        await bot.send_message(chat_id=chat_id, text=MSG_QUOTA_EXCEEDED)
+    if not is_admin and not check_and_update_limit(user_id, required_cost=cost):
+        if cost > 1:
+            await bot.send_message(chat_id=chat_id, text=f"🚫 ឯកសារនេះមានប្រវែងវែង (គិតជា {cost} កាក់)។ អ្នកមិនមានកាក់គ្រប់គ្រាន់ទេ! សូម /topup")
+        else:
+            await bot.send_message(chat_id=chat_id, text=MSG_QUOTA_EXCEEDED)
         return
 
     status_msg = await bot.send_message(
         chat_id=chat_id,
-        text="⏳ កំពុងដំណើរការ..."
+        text=MSG_PROCESSING
     )
 
     extracted_text = ""
