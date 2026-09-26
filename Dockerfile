@@ -14,5 +14,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ចម្លងកូដទាំងអស់ចូលក្នុង Docker
 COPY . .
 
-# Command សម្រាប់ដំណើរការ Bot
-CMD ["python", "bot.py"]
+# Command សម្រាប់ដំណើរការ Bot (FastAPI Webhook)
+CMD ["python", "main.py"]
