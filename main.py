@@ -22,7 +22,7 @@ bot = Bot(token=TELEGRAM_TOKEN) if TELEGRAM_TOKEN else None
 
 # Firebase Init
 if not firebase_admin._apps:
-    creds_json_str = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON")
+    creds_json_str = os.environ.get("FIREBASE_CREDENTIALS")
     if creds_json_str:
         try:
             creds_dict = json.loads(creds_json_str)
@@ -30,9 +30,9 @@ if not firebase_admin._apps:
             firebase_admin.initialize_app(cred)
             print("✅ Firebase initialized successfully.")
         except Exception as e:
-            print(f"❌ Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON: {e}")
+            print(f"❌ Failed to parse FIREBASE_CREDENTIALS: {e}")
     else:
-        print("⚠️ FIREBASE_SERVICE_ACCOUNT_JSON is missing! DB tracking will fail.")
+        print("⚠️ FIREBASE_CREDENTIALS is missing! DB tracking will fail.")
 
 db = firestore.client() if firebase_admin._apps else None
 
