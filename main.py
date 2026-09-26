@@ -39,6 +39,31 @@ db = firestore.client() if firebase_admin._apps else None
 DAILY_LIMIT = 10
 GEMINI_MODEL = "gemini-2.5-flash"
 
+# ----------------- API KEY ROTATION -----------------
+def get_api_keys(env_var_name: str, fallback_var_name: str) -> list:
+    keys_str = os.environ.get(env_var_name, os.environ.get(fallback_var_name, ""))
+    return [k.strip() for k in keys_str.split(",") if k.strip()]
+
+gemini_keys = get_api_keys("GEMINI_API_KEYS", "GEMINI_API_KEY")
+groq_keys = get_api_keys("GROQ_API_KEYS", "GROQ_API_KEY")
+
+gemini_idx = 0
+groq_idx = 0
+
+def get_next_gemini_key():
+    global gemini_idx
+    if not gemini_keys: return None
+    key = gemini_keys[gemini_idx % len(gemini_keys)]
+    gemini_idx += 1
+    return key
+
+def get_next_groq_key():
+    global groq_idx
+    if not groq_keys: return None
+    key = groq_keys[groq_idx % len(groq_keys)]
+    groq_idx += 1
+    return key
+
 # ----------------- FIRESTORE LOGIC -----------------
 def check_and_update_limit(user_id: int) -> bool:
     if not db:
@@ -69,57 +94,75 @@ def is_khmer_text(text: str) -> bool:
     return bool(re.search(r'[\u1780-\u17FF]', text))
 
 def translate_with_groq(text: str) -> str:
-    try:
-        groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
-        prompt = f"You are a professional translator. Translate the following text to Khmer (km). Output ONLY the translated text, nothing else:\n\n{text}"
-        response = groq_client.chat.completions.create(
-            model="llama3-70b-8192",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        if "429" in str(e):
-            return "⚠️ បច្ចុប្បន្ន Groq កំពុងរវល់ (Free Tier Limit 429)។ សូមរង់ចាំបន្តិចសិន!"
-        return f"❌ បរាជ័យ Groq៖ {str(e)}"
+    # Try up to 3 times (with different keys) if quota exceeded
+    for _ in range(3):
+        try:
+            api_key = get_next_groq_key()
+            if not api_key:
+                return "❌ គ្មាន GROQ_API_KEY នៅក្នុងប្រព័ន្ធ!"
+                
+            groq_client = Groq(api_key=api_key)
+            prompt = f"You are a professional translator. Translate the following text to Khmer (km). Output ONLY the translated text, nothing else:\n\n{text}"
+            response = groq_client.chat.completions.create(
+                model="llama3-70b-8192",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            if "429" in str(e) or "quota" in str(e).lower():
+                continue # Retry with next key
+            return f"❌ បរាជ័យ Groq៖ {str(e)}"
+    return "⚠️ Groq គណនីទាំងអស់កំពុងអស់កូតា (Free Tier Limit)។ សូមរង់ចាំបន្តិចសិន!"
 
 def process_with_gemini_text(text: str) -> str:
-    try:
-        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        prompt = f"You are a professional translator. Translate the following text to English (en). Output ONLY the translated text, nothing else:\n\n{text}"
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        if "429" in str(e) or "quota" in str(e).lower():
-            return "⚠️ បច្ចុប្បន្ន Gemini កំពុងរវល់ (Free Tier Quota)។ សូមរង់ចាំបន្តិចសិន!"
-        return f"❌ បរាជ័យ Gemini៖ {str(e)}"
+    for _ in range(3):
+        try:
+            api_key = get_next_gemini_key()
+            if not api_key:
+                return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
+                
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(GEMINI_MODEL)
+            prompt = f"You are a professional translator. Translate the following text to English (en). Output ONLY the translated text, nothing else:\n\n{text}"
+            response = model.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            if "429" in str(e) or "quota" in str(e).lower():
+                continue
+            return f"❌ បរាជ័យ Gemini៖ {str(e)}"
+    return "⚠️ Gemini គណនីទាំងអស់កំពុងអស់កូតា (Free Tier Quota)។ សូមរង់ចាំបន្តិចសិន!"
 
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
-    audio_file = None
-    try:
-        genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        
-        audio_file = genai.upload_file(path=file_path)
-        if is_voice:
-            prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary."
-        else:
-            prompt = "Please extract all text visible in this image. Output ONLY the text exactly as seen."
+    for _ in range(3):
+        audio_file = None
+        try:
+            api_key = get_next_gemini_key()
+            if not api_key:
+                return "❌ គ្មាន GEMINI_API_KEY នៅក្នុងប្រព័ន្ធ!"
+                
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(GEMINI_MODEL)
             
-        response = model.generate_content([prompt, audio_file])
-        return response.text.strip()
-    except Exception as e:
-        if "429" in str(e) or "quota" in str(e).lower():
-            return "⚠️ បច្ចុប្បន្ន Gemini កំពុងរវល់ (Free Tier Quota)។ សូមរង់ចាំបន្តិចសិន!"
-        return f"❌ បរាជ័យក្នុងការវិភាគ File៖ {str(e)}"
-    finally:
-        # ALWAYS delete from Gemini servers to save space/quota
-        if audio_file:
-            try:
-                genai.delete_file(audio_file.name)
-            except:
-                pass
+            audio_file = genai.upload_file(path=file_path)
+            if is_voice:
+                prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary."
+            else:
+                prompt = "Please extract all text visible in this image. Output ONLY the text exactly as seen."
+                
+            response = model.generate_content([prompt, audio_file])
+            return response.text.strip()
+        except Exception as e:
+            if "429" in str(e) or "quota" in str(e).lower():
+                continue
+            return f"❌ បរាជ័យក្នុងការវិភាគ File៖ {str(e)}"
+        finally:
+            if audio_file:
+                try:
+                    genai.delete_file(audio_file.name)
+                except:
+                    pass
+    return "⚠️ Gemini គណនីទាំងអស់កំពុងអស់កូតា (Free Tier Quota)។ សូមរង់ចាំបន្តិចសិន!"
 
 # ----------------- TELEGRAM LOGIC -----------------
 async def handle_update(update: Update):
