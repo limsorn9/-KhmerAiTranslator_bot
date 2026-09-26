@@ -7,7 +7,7 @@ import pytz
 from fastapi import FastAPI, Request
 from telegram import Update, Bot
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, db as rtdb
 from groq import Groq
 import google.generativeai as genai
 import docx
@@ -39,14 +39,17 @@ if not firebase_admin._apps:
         try:
             creds_dict = json.loads(creds_json_str)
             cred = credentials.Certificate(creds_dict)
-            firebase_admin.initialize_app(cred)
+            firebase_db_url = os.environ.get("FIREBASE_DB_URL", "")
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': firebase_db_url
+            })
             print("✅ Firebase initialized successfully.")
         except Exception as e:
             print(f"❌ Failed to parse FIREBASE_CREDENTIALS: {e}")
     else:
         print("⚠️ FIREBASE_CREDENTIALS is missing! DB tracking will fail.")
 
-db = firestore.client() if firebase_admin._apps else None
+rtdb_ref = rtdb.reference('users') if firebase_admin._apps else None
 
 DAILY_LIMIT = 10
 GEMINI_MODEL = "gemini-1.5-flash"
@@ -76,29 +79,32 @@ def get_next_groq_key():
     groq_idx += 1
     return key
 
-# ----------------- FIRESTORE LOGIC -----------------
+# ----------------- DB LOGIC (REALTIME DATABASE) -----------------
 def check_and_update_limit(user_id: int) -> bool:
-    if not db:
+    if not rtdb_ref:
         return True # Fail-open if no DB configured
         
     tz = pytz.timezone('Asia/Phnom_Penh')
     today_str = datetime.now(tz).strftime('%Y-%m-%d')
-    user_ref = db.collection('users').document(str(user_id))
+    user_node = rtdb_ref.child(str(user_id))
     
-    doc = user_ref.get()
-    if doc.exists:
-        data = doc.to_dict()
+    data = user_node.get()
+    if data:
         if data.get('last_reset_date') == today_str:
             count = data.get('daily_count', 0)
             if count >= DAILY_LIMIT:
                 return False
-            user_ref.update({'daily_count': count + 1})
+            user_node.update({'daily_count': count + 1})
             return True
         else:
-            user_ref.update({'daily_count': 1, 'last_reset_date': today_str})
+            user_node.update({'daily_count': 1, 'last_reset_date': today_str})
             return True
     else:
-        user_ref.set({'daily_count': 1, 'last_reset_date': today_str, 'created_at': firestore.SERVER_TIMESTAMP})
+        user_node.set({
+            'daily_count': 1, 
+            'last_reset_date': today_str,
+            'created_at': datetime.now(tz).isoformat()
+        })
         return True
 
 # ----------------- LLM ROUTING -----------------
