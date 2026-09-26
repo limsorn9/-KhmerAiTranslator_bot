@@ -56,14 +56,14 @@ def translate_with_groq(text: str) -> str:
 
 def translate_with_gemini(text: str) -> str:
     genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-3.1-pro')
     prompt = f"You are a professional translator. Translate the following text to English (en). Output ONLY the translated text, nothing else:\n\n{text}"
     response = model.generate_content(prompt)
     return response.text.strip()
 
 async def transcribe_with_gemini_audio(file_path: str) -> str:
     genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-3.1-pro')
     
     # Upload to Gemini File API
     audio_file = genai.upload_file(path=file_path)
