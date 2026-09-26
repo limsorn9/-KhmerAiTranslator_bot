@@ -8,3 +8,5 @@ python-docx==1.1.0
 pytz==2024.1
 deep-translator==1.11.4
 edge-tts==7.2.8
+pytesseract==0.3.13
+Pillow==10.4.0

@@ -3,6 +3,8 @@ import re
 import json
 import asyncio
 import edge_tts
+import pytesseract
+from PIL import Image
 from deep_translator import GoogleTranslator
 import subprocess
 from datetime import datetime
@@ -212,11 +214,28 @@ async def process_audio_smart(file_path: str):
             return f"❌ បរាជ័យ Groq Audio: {str(e)}", {}
     return "⚠️ Groq Audio អស់កូតា។ សូមរង់ចាំ!", {}
 
+def extract_image_text_local(file_path: str) -> str:
+    """Tesseract OCR: fast local image-to-text, supports Khmer+English+All"""
+    try:
+        img = Image.open(file_path)
+        # Try Khmer+English first (common case), then all langs
+        text = pytesseract.image_to_string(img, lang='khm+eng').strip()
+        if not text:
+            text = pytesseract.image_to_string(img).strip()
+        return text
+    except Exception as e:
+        return ""
+
 async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> str:
     if is_voice:
         prompt = "Listen to this audio carefully and transcribe all the speech you hear into text. If it is in Khmer, write it in Khmer script. Output ONLY the transcribed text exactly as spoken, with no additional commentary."
     else:
-        prompt = "Please extract all text visible in this image. Output ONLY the text exactly as seen."
+        # IMAGE: Try Tesseract first (fast, local, no API)
+        local_text = extract_image_text_local(file_path)
+        if local_text and len(local_text.strip()) > 3:
+            return local_text  # Return fast Tesseract result!
+        # Tesseract got nothing useful → fallback to Gemini
+        prompt = "Please extract all text visible in this image. Output ONLY the text exactly as seen. If there is no clear text, output exactly: NO_TEXT"
 
     for model_name in GEMINI_MODELS:
         uploaded_file = None
@@ -231,7 +250,10 @@ async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> s
                 model=model_name,
                 contents=[prompt, uploaded_file]
             )
-            return response.text.strip()
+            result = response.text.strip()
+            if result == "NO_TEXT" or not result:
+                return "⚠️ រូបភាពមិនច្បាស់ ឬ គ្មានអក្សរ! សូមផ្ញើរូបភាពថ្មី."
+            return result
         except Exception as e:
             err = str(e)
             if "429" in err or "quota" in err.lower() or "503" in err or "unavailable" in err.lower():
