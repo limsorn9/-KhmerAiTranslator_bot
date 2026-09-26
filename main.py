@@ -122,7 +122,7 @@ def translate_with_groq(text: str) -> str:
             groq_client = Groq(api_key=api_key)
             prompt = f"You are a professional translator. Translate the following text to Khmer (km). Output ONLY the translated text, nothing else:\n\n{text}"
             response = groq_client.chat.completions.create(
-                model="llama-3.1-70b-versatile",
+                model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.3
             )
