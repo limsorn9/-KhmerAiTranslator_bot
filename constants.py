@@ -1,0 +1,55 @@
+# Khmer Text Constants - Written directly as UTF-8
+# This file avoids all Unicode escape sequence corruption issues.
+
+MSG_START = (
+    "👋 សួស្តី! ខ្ញុំជា KhmerAI Translator Bot\n\n"
+    "📌 ខ្ញុំអាចជួយអ្នកបាន៖\n"
+    "• ✍️ ផ្ញើអត្ថបទ ភាសាណាក៏បាន → បកប្រែ ៩ ភាសា\n"
+    "• 🎤 ផ្ញើសំឡេង (Voice message)\n"
+    "• 📹 ផ្ញើវីដេអូ (Video)\n"
+    "• 📄 ផ្ញើឯកសារ (.txt, .docx)\n"
+    "• 🖼️ ផ្ញើរូបភាព\n\n"
+    "⚡ Free Tier: ១០ ដង/ថ្ងៃ\n"
+    "📊 ប្រើ /mycoin ដើម្បីមើលចំនួនប្រើប្រាស់\n"
+    "👉 សូមផ្ញើសារណាមួយដើម្បីចាប់ផ្តើម!"
+)
+
+MSG_TOPUP = (
+    "💎 Upgrade to Premium\n\n"
+    "🆓 Free Tier: ១០ ដង/ថ្ងៃ\n"
+    "⭐ Premium: ប្រើបានគ្មានដែន\n\n"
+    "📩 ទំនាក់ទំនងអ្នកគ្រប់គ្រង: @YourAdminHandle"
+)
+
+MSG_UNKNOWN_CMD = "❓ ពាក្យបញ្ជានេះមិនត្រូវបានគាំទ្រទេ។ សូមសាកល្បង /start"
+
+MSG_QUOTA_EXCEEDED = (
+    "🚫 អ្នកបានប្រើគ្រប់ ១០ ដងសម្រាប់ថ្ងៃនេះហើយ (Free Tier)!\n\n"
+    "💡 ប្រើ /topup ដើម្បី Upgrade!"
+)
+
+MSG_PROCESSING = "⏳ កំពុងដំណើរការ..."
+MSG_TRANSLATING = "⏳ កំពុងបកប្រែ..."
+MSG_DOC_UNSUPPORTED = "❌ ទទួលយកតែ .txt និង .docx ប៉ុណ្ណោះ!"
+MSG_FORMAT_UNSUPPORTED = "❌ ទម្រង់ឯកសារនេះមិនត្រូវបានគាំទ្រទេ!"
+MSG_IMAGE_NO_TEXT = "⚠️ រូបភាពមិនច្បាស់ ឬ គ្មានអក្សរ! សូមផ្ញើរូបភាពថ្មី។"
+MSG_GROQ_QUOTA = "⚠️ Groq អស់ Quota! សូមរង់ចាំ ១ នាទី។"
+MSG_GEMINI_OVERLOAD = "⚠️ Gemini Overload! សូមរង់ចាំ ១-២ នាទី។"
+MSG_NO_GROQ_KEY = "❌ គ្មាន GROQ_API_KEY!"
+MSG_NO_GEMINI_KEY = "❌ គ្មាន GEMINI_API_KEY!"
+MSG_EXPIRED = "⚠️ អត្ថបទផុតអាយុហើយ! សូមផ្ញើសារថ្មីម្តងទៀត។"
+MSG_RESULT = "✅ លទ្ធផល:"
+MSG_TRANSLATE_FAIL = "❌ បរាជ័យបកប្រែ! សូមព្យាយាមម្តងទៀត។"
+
+BTN_TRANSLATE_ALL = "🌐 បកប្រែគ្រប់ភាសា"
+
+SELECTOR_HEADER = "📄 អក្សរដែលបានទាញចេញ:\n\n"
+SELECTOR_FOOTER = "\n\n❓ សូមជ្រើសរើសភាសាដែលចង់បកប្រែ ↓"
+
+def msg_mycoin(count: int, daily_limit: int, remaining: int) -> str:
+    return (
+        f"📊 ស្ថានភាពប្រចាំថ្ងៃ\n\n"
+        f"✅ បានប្រើ: {count}/{daily_limit} ដង\n"
+        f"🔋 នៅសល់: {remaining} ដង\n\n"
+        f"🔄 កូតានឹង Reset ឡើងវិញនៅថ្ងៃស្អែក។"
+    )

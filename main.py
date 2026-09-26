@@ -17,6 +17,14 @@ from firebase_admin import credentials, db as rtdb
 from groq import Groq
 from google import genai as google_genai
 import docx
+from constants import (
+    MSG_START, MSG_TOPUP, MSG_UNKNOWN_CMD, MSG_QUOTA_EXCEEDED,
+    MSG_PROCESSING, MSG_TRANSLATING, MSG_DOC_UNSUPPORTED,
+    MSG_FORMAT_UNSUPPORTED, MSG_IMAGE_NO_TEXT, MSG_GROQ_QUOTA,
+    MSG_GEMINI_OVERLOAD, MSG_NO_GROQ_KEY, MSG_NO_GEMINI_KEY,
+    MSG_EXPIRED, MSG_RESULT, MSG_TRANSLATE_FAIL,
+    BTN_TRANSLATE_ALL, SELECTOR_HEADER, SELECTOR_FOOTER, msg_mycoin
+)
 
 from contextlib import asynccontextmanager
 
@@ -379,21 +387,7 @@ async def handle_update(update: Update):
         cmd = msg.text.split()[0].lower()
 
         if cmd == '/start':
-            await bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "\U0001f44b \u179f\u17bd\u179f\u17d2\u178f\u17b8! \u1781\u17d2\u1789\u17bb\u1798\u1787\u17b6 KhmerAI Translator Bot\n\n"
-                    "\U0001f4cc \u1781\u17d2\u1789\u17bb\u1798\u17a2\u17b6\u1785\u1787\u17bd\u1799\u17a2\u17d2\u1793\u1780\u1794\u17b6\u1793\u17d6\n"
-                    "\u2022 \u270d\ufe0f \u1795\u17d2\u1789\u17be\u179a\u17a2\u178f\u17d2\u1790\u1794\u178f\u1797\u17b6\u179f\u17b6\u178e\u17b6\u1780\u17cb\u1794\u17b6\u1793 \u2192 \u1794\u1780\u1794\u17d2\u179a\u17be \u17e9 \u1797\u17b6\u179f\u17b6\n"
-                    "\u2022 \U0001f3a4 \u1795\u17d2\u1789\u17be\u179a\u179f\u17c6\u179b\u17be\u1784 (Voice message)\n"
-                    "\u2022 \U0001f4f9 \u1795\u17d2\u1789\u17be\u179a\u179c\u17b8\u178f\u17b9\u17a2\u17bc (Video)\n"
-                    "\u2022 \U0001f4c4 \u1795\u17d2\u1789\u17be\u179a\u17a1\u1780\u179f\u17b6\u179a (.txt, .docx)\n"
-                    "\u2022 \U0001f5bc\ufe0f \u1795\u17d2\u1789\u17be\u179a\u179a\u17bc\u1794\u1797\u17b6\u1796\n\n"
-                    "\u26a1 Free Tier: \u17e1\u17e0 \u178f\u1784/\u1790\u17d2\u1784\u17b9\n"
-                    "\U0001f4ca \u1794\u17d2\u179a\u17be /mycoin \u178f\u17d0\u1789\u1798\u17be\u179b\u1785\u17c6\u1793\u17bd\u1793\u1794\u17d2\u179a\u17be\u1794\u17d2\u179a\u17b6\u179f\u17cb\n"
-                    "\U0001f449 \u179f\u17bc\u1798\u1795\u17d2\u1789\u17be\u179a\u179f\u17b6\u179a\u178e\u17b6\u1798\u17bd\u1799\u178f\u17d0\u1789\u1785\u17b6\u1794\u17cb\u1795\u17d2\u178f\u17be\u1798!"
-                )
-            )
+            await bot.send_message(chat_id=chat_id, text=MSG_START)
             return
 
         elif cmd == '/mycoin':
@@ -405,55 +399,26 @@ async def handle_update(update: Update):
                 if data and data.get('last_reset_date') == today_str:
                     count = data.get('daily_count', 0)
             remaining = max(0, DAILY_LIMIT - count)
-            await bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "\U0001f4ca \u179f\u17d2\u1790\u17b6\u1793\u1797\u17b6\u1796\u1794\u17d2\u179a\u1785\u17b6\u17c6\u1790\u17d2\u1784\u17b9\n\n"
-                    f"\u2705 \u1794\u17b6\u1793\u1794\u17d2\u179a\u17be: {count}/{DAILY_LIMIT} \u178f\u1784\n"
-                    f"\U0001f50b \u1793\u17c5\u179f\u179b\u17cb: {remaining} \u178f\u1784\n\n"
-                    "\U0001f504 \u1780\u17bc\u178f\u17b6\u1793\u17b9\u1784 Reset \u17a1\u17be\u1784\u179c\u17b7\u1789\u1793\u17c5\u1790\u17d2\u1784\u17b9\u179f\u17d2\u17a2\u17b6\u1780\u17d4"
-                )
-            )
+            await bot.send_message(chat_id=chat_id, text=msg_mycoin(count, DAILY_LIMIT, remaining))
             return
 
         elif cmd == '/topup':
-            await bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "\U0001f48e Upgrade to Premium\n\n"
-                    "\U0001f193 Free Tier: \u17e1\u17e0 \u178f\u1784/\u1790\u17d2\u1784\u17b9\n"
-                    "\u2b50 Premium: \u1798\u17b7\u1793\u1798\u17b6\u1793\u178f\u17d2\u179a\u17bc\u1788\u17d4\n\n"
-                    "\U0001f4e9 \u178f\u17c6\u1793\u17b6\u1780\u17cb\u178f\u17c6\u1793\u1784\u17a2\u17d2\u1793\u1780\u1782\u17d2\u179a\u1794\u17cb\u1782\u17d2\u179a\u1784: @YourAdminHandle"
-                )
-            )
+            await bot.send_message(chat_id=chat_id, text=MSG_TOPUP)
             return
 
         else:
-            await bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "\u2753 \u1796\u17b6\u1780\u17d2\u1799\u1794\u1789\u17d2\u1787\u17b6\u1793\u17b8\u1798\u17b7\u1793\u178f\u17d2\u179a\u17bc\u179c\u1794\u17b6\u1793\u1782\u17b6\u17c6\u178f\u17d2\u179a\u178f\u17c2\u17d4 "
-                    "\u179f\u17bc\u1798\u179f\u17b6\u1780\u179b\u17d2\u1794\u1784 /start"
-                )
-            )
+            await bot.send_message(chat_id=chat_id, text=MSG_UNKNOWN_CMD)
             return
 
     # Quota check (skip for admins)
     is_admin = user_id in SUPER_ADMINS
     if not is_admin and not check_and_update_limit(user_id):
-        await bot.send_message(
-            chat_id=chat_id,
-            text=(
-                "\U0001f6ab \u17a2\u17d2\u1793\u1780\u1794\u17b6\u1793\u1794\u17d2\u179a\u17be\u1782\u17d2\u179a\u1794\u17cb \u17e1\u17e0 \u178f\u1784"
-                "\u179f\u1798\u17d2\u179a\u17b6\u1794\u17cb\u1790\u17d2\u1784\u17b9\u1793\u17c1\u17a0\u17be\u1799 (Free Tier)!\n\n"
-                "\U0001f4a1 \u1794\u17d2\u179a\u17be /topup \u178f\u17d0\u1789\u1798\u17be\u179b Upgrade!"
-            )
-        )
+        await bot.send_message(chat_id=chat_id, text=MSG_QUOTA_EXCEEDED)
         return
 
     status_msg = await bot.send_message(
         chat_id=chat_id,
-        text="\u23f3 \u1780\u17c6\u1796\u17bb\u1784\u178f\u17c6\u178e\u17be\u179a\u1780\u17b6\u179a..."
+        text="⏳ កំពុងដំណើរការ..."
     )
 
     extracted_text = ""
