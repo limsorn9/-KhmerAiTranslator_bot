@@ -518,6 +518,29 @@ async def handle_update(update: Update):
     user_id = msg.from_user.id
     chat_id = msg.chat_id
 
+    # Restrict group usage to Admins only
+    if msg.chat.type in ['group', 'supergroup']:
+        if not (msg.new_chat_members or msg.left_chat_member or msg.new_chat_title or msg.new_chat_photo or msg.delete_chat_photo or msg.group_chat_created):
+            is_allowed = False
+            if user_id in SUPER_ADMINS:
+                is_allowed = True
+            else:
+                try:
+                    member = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+                    if member.status in ['administrator', 'creator']:
+                        is_allowed = True
+                except Exception:
+                    pass
+            
+            if not is_allowed:
+                if (msg.text and msg.text.startswith('/')) or msg.voice or msg.video or msg.video_note or msg.document:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text="⚠️ សុំទោស! ការប្រើប្រាស់ Bot នៅក្នុងក្រុមត្រូវបានអនុញ្ញាតសម្រាប់តែ Admin ប៉ុណ្ណោះ។\n\n👉 សូមអញ្ជើញទៅប្រើប្រាស់ Bot នៅក្នុងការឆាតឯកជន (Private Chat) វិញ តាមរយៈ @KhmerAiTranslator_bot",
+                        reply_to_message_id=msg.message_id
+                    )
+                return
+
     # Handle commands
     if msg.text and msg.text.startswith('/'):
         cmd = msg.text.split()[0].lower()
