@@ -385,6 +385,28 @@ async def show_language_selector(chat_id: int, reply_msg_id: int,
 
 # ----------------- TELEGRAM LOGIC -----------------
 async def handle_update(update: Update):
+    user = None
+    chat_id = None
+    if update.message:
+        user = update.message.from_user
+        chat_id = update.message.chat_id
+    elif update.callback_query:
+        user = update.callback_query.from_user
+        chat_id = update.callback_query.message.chat_id
+
+    if user and chat_id:
+        try:
+            member = await bot.get_chat_member(chat_id="-1004293304141", user_id=user.id)
+            if member.status in ['left', 'kicked', 'restricted']:
+                keyboard = [[InlineKeyboardButton("👉 ចូលរួម Channel ទីនេះ 👈", url="https://t.me/ssonlinechanel")]]
+                msg_text = "⚠️ សូមអភ័យទោស!\n\nដើម្បីប្រើប្រាស់ Bot នេះបាន លោកអ្នកត្រូវតែចូលរួមក្នុង Channel របស់យើងជាមុនសិន។\n\nសូមចុចប៊ូតុងខាងក្រោមដើម្បីចូលរួម បន្ទាប់មកសូមសាកល្បងម្ដងទៀត។"
+                if update.callback_query:
+                    await update.callback_query.answer("សូមចូលរួម Channel ជាមុនសិន!", show_alert=True)
+                else:
+                    await bot.send_message(chat_id=chat_id, text=msg_text, reply_markup=InlineKeyboardMarkup(keyboard))
+                return
+        except Exception as e:
+            print(f"Force join check error: {e}")
 
     # Handle inline keyboard callbacks
     if update.callback_query:
