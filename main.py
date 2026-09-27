@@ -141,15 +141,19 @@ PENDING_AUDIO = {}
 
 # ----------------- LANGUAGE CONFIG -----------------
 LANG_CONFIG = {
-    'km':    ('\U0001f1f0\U0001f1ed \u1781\u17d2\u1798\u17c2\u179a',       'km-KH-SreymomNeural'),
-    'en':    ('\U0001f1ec\U0001f1e7 \u17a2\u1784\u17cb\u1782\u17d2\u179b\u17c1\u179f', 'en-US-AriaNeural'),
-    'th':    ('\U0001f1f9\U0001f1ed \u1790\u17c3',                           'th-TH-PremwadeeNeural'),
-    'vi':    ('\U0001f1fb\U0001f1f3 \u179c\u17c0\u178f\u178e\u17b6\u1798',  'vi-VN-HoaiMyNeural'),
-    'zh-CN': ('\U0001f1e8\U0001f1f3 \u1785\u17b7\u1793',                    'zh-CN-XiaoxiaoNeural'),
-    'ja':    ('\U0001f1ef\U0001f1f5 \u1787\u1794\u17bb\u17c9\u1793',        'ja-JP-NanamiNeural'),
-    'ko':    ('\U0001f1f0\U0001f1f7 \u1780\u17bc\u179a\u17c9\u17c1',        'ko-KR-SunHiNeural'),
-    'id':    ('\U0001f1ee\U0001f1e9 \u17a2\u17b7\u1793\u178c\u17bc\u1793\u17b9\u179f\u17b8', 'id-ID-GadisNeural'),
-    'ms':    ('\U0001f1f2\U0001f1fe \u1798\u17d0\u17a2\u17b6\u179b\u17c1',  'ms-MY-YasminNeural'),
+    'km':    ('🇰🇭 ខ្មែរ', 'km-KH-SreymomNeural'),
+    'en':    ('🇬🇧 អង់គ្លេស', 'en-US-AriaNeural'),
+    'zh-CN': ('🇨🇳 ចិន', 'zh-CN-XiaoxiaoNeural'),
+    'ja':    ('🇯🇵 ជប៉ុន', 'ja-JP-NanamiNeural'),
+    'ko':    ('🇰🇷 កូរ៉េ', 'ko-KR-SunHiNeural'),
+    'th':    ('🇹🇭 ថៃ', 'th-TH-PremwadeeNeural'),
+    'vi':    ('🇻🇳 វៀតណាម', 'vi-VN-HoaiMyNeural'),
+    'id':    ('🇮🇩 ឥណ្ឌូនេស៊ី', 'id-ID-GadisNeural'),
+    'ms':    ('🇲🇾 ម៉ាឡេស៊ី/ព្រុយណេ', 'ms-MY-YasminNeural'),
+    'tl':    ('🇵🇭 ហ្វីលីពីន', 'fil-PH-BlessicaNeural'),
+    'my':    ('🇲🇲 មីយ៉ាន់ម៉ា', 'my-MM-NilarNeural'),
+    'lo':    ('🇱🇦 ឡាវ', 'lo-LA-KeomanyNeural'),
+    'pt':    ('🇹🇱 ទីម័រខាងកើត', 'pt-PT-RaquelNeural')
 }
 
 # ----------------- TTS -----------------
