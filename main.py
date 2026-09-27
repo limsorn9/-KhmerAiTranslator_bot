@@ -387,6 +387,41 @@ async def handle_update(update: Update):
         chat_id = query.message.chat_id
         data = query.data
 
+        if data.startswith("audiotype_"):
+            parts = data.split("_")
+            audio_type = parts[1]
+            msg_id_str = parts[2]
+            
+            if msg_id_str not in PENDING_AUDIO:
+                await query.edit_message_text("⚠️ ឯកសារនេះអស់សុពលភាពហើយ សូមផ្ញើម្ដងទៀត។")
+                return
+                
+            final_file, cost, file_to_delete = PENDING_AUDIO[msg_id_str]
+            await query.edit_message_text("⏳ កំពុងស្តាប់ និងសរសេរជាអក្សរ...")
+            
+            try:
+                extracted_text = await handle_audio_transcription(final_file, cost, int(msg_id_str), audio_type)
+                
+                if final_file != file_to_delete and os.path.exists(final_file):
+                    try: os.remove(final_file)
+                    except: pass
+                if file_to_delete and os.path.exists(file_to_delete):
+                    try: os.remove(file_to_delete)
+                    except: pass
+                del PENDING_AUDIO[msg_id_str]
+                
+                if extracted_text:
+                    if extracted_text.startswith("❌") or extracted_text.startswith("⚠️"):
+                        await query.edit_message_text(extracted_text)
+                    else:
+                        await bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
+                        await show_language_selector(chat_id, int(msg_id_str), extracted_text, user_id)
+                else:
+                    await query.edit_message_text("⚠️ មិនមានអក្សរត្រូវបានរកឃើញទេ!")
+            except Exception as e:
+                await query.edit_message_text(f"❌ មានបញ្ហាប្រព័ន្ធ៖ {str(e)}")
+            return
+
         if not data.startswith("translate_"):
             return
 
