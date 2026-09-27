@@ -598,6 +598,16 @@ async def handle_update(update: Update):
             await bot.send_message(chat_id=chat_id, text=MSG_UNKNOWN_CMD)
             return
 
+    # Handle service messages (Join/Leave Group)
+    if msg.new_chat_members:
+        welcome_text = "🎉 សូមស្វាគមន៍មកកាន់ក្រុម! 🙏\nខ្ញុំជា Bot សម្រាប់ជួយបកប្រែភាសា និងបញ្ចេញសម្លេង។ សូមសាកល្បងផ្ញើអត្ថបទ ឬសម្លេងមកខ្ញុំចុះ!"
+        await bot.send_message(chat_id=chat_id, text=welcome_text)
+        return
+        
+    if msg.left_chat_member or msg.new_chat_title or msg.new_chat_photo or msg.delete_chat_photo or msg.group_chat_created:
+        return
+
+
     # Quota check (skip for admins)
     import math
     cost = 0
