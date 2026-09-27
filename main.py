@@ -320,7 +320,18 @@ async def process_with_gemini_media(file_path: str, is_voice: bool = False) -> s
             if not api_key:
                 return "\u274c \u1782\u17d2\u1798\u17b6\u1793 GEMINI_API_KEY!"
             client = google_genai.Client(api_key=api_key)
-            uploaded_file = client.files.upload(file=file_path)
+            ext = file_path.lower().split('.')[-1]
+            mime_map = {
+                "ogg": "audio/ogg",
+                "wav": "audio/wav",
+                "mp3": "audio/mp3",
+                "mp4": "video/mp4",
+                "jpg": "image/jpeg",
+                "jpeg": "image/jpeg",
+                "png": "image/png"
+            }
+            mime_type = mime_map.get(ext, "audio/ogg")
+            uploaded_file = client.files.upload(file=file_path, config={'mime_type': mime_type})
             response = client.models.generate_content(
                 model=model_name,
                 contents=[prompt, uploaded_file]
