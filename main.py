@@ -137,6 +137,7 @@ def check_and_update_limit(user_id: int, required_cost: int = 1) -> bool:
 
 # ----------------- PENDING TEXT STORE -----------------
 PENDING_TRANSLATIONS = {}
+PENDING_AUDIO = {}
 
 # ----------------- LANGUAGE CONFIG -----------------
 LANG_CONFIG = {
@@ -234,6 +235,28 @@ def translate_to_multi(text: str):
     return res_str.strip(), translations
 
 # ----------------- AUDIO PROCESSING -----------------
+async def handle_audio_transcription(final_file: str, cost: int, msg_id: int, audio_type: str) -> str:
+    import glob, subprocess
+    if cost > 1:
+        subprocess.run(["ffmpeg", "-i", final_file, "-f", "segment", "-segment_time", "300", "-c:a", "libmp3lame", "-q:a", "5", f"/tmp/chunk_{msg_id}_%03d.mp3", "-y"], check=True, capture_output=True)
+        chunk_files = sorted(glob.glob(f"/tmp/chunk_{msg_id}_*.mp3"))
+        full_text = ""
+        extracted_text = ""
+        for chunk in chunk_files:
+            chunk_text = await transcribe_audio_file(chunk, audio_type)
+            if chunk_text.startswith("❌") or chunk_text.startswith("⚠️"):
+                extracted_text = chunk_text
+                break
+            full_text += chunk_text + " "
+        if not extracted_text:
+            extracted_text = full_text.strip()
+        for chunk in chunk_files:
+            try: os.remove(chunk)
+            except: pass
+        return extracted_text
+    else:
+        return await transcribe_audio_file(final_file, audio_type)
+
 async def transcribe_audio_file(file_path: str) -> str:
     """
     1. Gemini listens first. If Khmer -> transcribes.
@@ -598,24 +621,19 @@ async def handle_update(update: Update):
                     final_file = file_to_delete
 
             if is_audio:
-                if cost > 1:
-                    import glob
-                    subprocess.run(["ffmpeg", "-i", final_file, "-f", "segment", "-segment_time", "300", "-c:a", "libmp3lame", "-q:a", "5", f"/tmp/chunk_{msg.message_id}_%03d.mp3", "-y"], check=True, capture_output=True)
-                    chunk_files = sorted(glob.glob(f"/tmp/chunk_{msg.message_id}_*.mp3"))
-                    full_text = ""
-                    for chunk in chunk_files:
-                        chunk_text = await transcribe_audio_file(chunk)
-                        if chunk_text.startswith("❌") or chunk_text.startswith("⚠️"):
-                            extracted_text = chunk_text
-                            break
-                        full_text += chunk_text + " "
-                    if not extracted_text:
-                        extracted_text = full_text.strip()
-                    for chunk in chunk_files:
-                        try: os.remove(chunk)
-                        except: pass
-                else:
-                    extracted_text = await transcribe_audio_file(final_file)
+                # We stop here and ask user for the language type!
+                PENDING_AUDIO[str(msg.message_id)] = (final_file, cost, file_to_delete)
+                keyboard = [
+                    [InlineKeyboardButton("🇰🇭 ភាសាខ្មែរ", callback_data=f"audiotype_km_{msg.message_id}")],
+                    [InlineKeyboardButton("🌍 ភាសាបរទេស", callback_data=f"audiotype_foreign_{msg.message_id}")]
+                ]
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=status_msg.message_id,
+                    text="❓ តើសម្លេង/វីដេអូអម្បាញ់មិញនេះ និយាយជាភាសាអ្វី?",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return # Stop processing, wait for callback
             else:
                 local_text = extract_image_text_local(final_file)
                 if local_text and len(local_text) > 5:
@@ -630,7 +648,7 @@ async def handle_update(update: Update):
             await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=MSG_FORMAT_UNSUPPORTED)
             return
 
-        # SHOW LANGUAGE SELECTOR
+        # SHOW LANGUAGE SELECTOR (For Text and Images)
         if extracted_text:
             if extracted_text.startswith("❌") or extracted_text.startswith("⚠️"):
                 await bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=extracted_text)
