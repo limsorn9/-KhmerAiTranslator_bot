@@ -257,16 +257,12 @@ async def handle_audio_transcription(final_file: str, cost: int, msg_id: int, au
     else:
         return await transcribe_audio_file(final_file, audio_type)
 
-async def transcribe_audio_file(file_path: str) -> str:
-    """
-    1. Gemini listens first. If Khmer -> transcribes.
-    2. If NOT_KHMER -> Groq Whisper transcribes.
-    """
-    import re
-    gemini_res = await process_with_gemini_media(file_path, is_voice=True)
-    if gemini_res and not gemini_res.startswith("❌") and not gemini_res.startswith("⚠️"):
-        # If Gemini transcribed it and used Khmer characters, it is Khmer!
-        if re.search(r'[ក-៿]', gemini_res):
+async def transcribe_audio_file(file_path: str, audio_type: str) -> str:
+    if audio_type == "km":
+        gemini_res = await process_with_gemini_media(file_path, is_voice=True)
+        if gemini_res and not gemini_res.startswith("❌") and not gemini_res.startswith("⚠️"):
+            return gemini_res
+        if gemini_res:
             return gemini_res
 
     for _ in range(3):
