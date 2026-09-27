@@ -664,6 +664,7 @@ async def handle_update(update: Update):
                     text="❓ តើសម្លេង/វីដេអូអម្បាញ់មិញនេះ និយាយជាភាសាអ្វី?",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
+                file_to_delete = None
                 return # Stop processing, wait for callback
             else:
                 local_text = extract_image_text_local(final_file)
